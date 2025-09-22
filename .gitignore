@@ -31,6 +31,3 @@ __pycache__
 
 # MSFT Office
 ~$*.*
-
-# Environment variables file
-.env
