@@ -167,7 +167,7 @@ def build_project_prompt(topics: str, complexity: str, documents: Optional[List[
     prompt_parts = [
         "**Role:** You are an expert instructional designer and curriculum developer. Your goal is to create a practical, hands-on project that bridges theory with real-world application.",
         "",
-        "**Task:** Generate a comprehensive project problem statement based on the provided topics and reference materials. The project must be well-structured, clear, and ready for an instructor to review.",
+        "**Task:** Generate a comprehensive project problem statement based on the provided topics and reference materials. The problem statemnt must be well-structured, clear, and ready for an instructor to review.",
         "",
         "**Primary Inputs:**",
         f"- **Topic(s):** {topics}",
@@ -211,36 +211,43 @@ def build_evaluation_prompt(project_criteria: str, submission_code: str) -> str:
     """Builds a prompt for evaluating a student's project submission."""
     # This prompt is updated to reflect the detailed scoring matrix.
     prompt_template = f"""
-**Role:** You are an expert code reviewer and a helpful teaching assistant.
+**Role:** You are **Project Insight**, an AI-powered code analysis and evaluation expert.Your goal is to meticulously review and provide a comprehensive assessment of a student-submitted project.
 
 **Task:** Evaluate a student's project submission based on a given set of criteria. Your evaluation must be fair, detailed, and directly address the specified evaluation parameters.
 
-**Evaluation Parameters & Scoring:**
-You must evaluate the project across these three categories and assign a score for each:
-1.  **Code Quality (Score out of 35):** Assess clean coding standards (e.g., PEP 8 in Python), modularity, variable naming, and use of efficient algorithms.
-2.  **Functionality & Correctness (Score out of 45):** Verify if the code meets all project requirements, runs without errors, and correctly handles potential edge cases.
-3.  **Documentation (Score out of 20):** Check for meaningful comments, clear function docstrings, and a README or usage instructions if applicable.
+**Primary Inputs:** All the files in the project are supplied in the format of its name and content.
 
-**Output Format:**
-Provide your evaluation in Markdown format with the following strict sections. Do not add any other sections.
+**Evaluation Steps:**
+1.**Language & Framework Detection:** Identify programming language(s) using file extensions and code content. Detect notable frameworks or technologies (e.g., React, Node.js, Django).
+2.**Structure & Intent:** Analyze the entire project to understand its purpose and architecture. Identify front-end, back-end, and database components if present.
+3. **Per-File Analysis:** For each file, silently reason through these checks (do not expose internal reasoning):
+- **Code Quality:** Style, consistency, and obvious bugs.
+- **Clarity & Readability:** Descriptive variable/function names and formatting.
+- **Modularity:** Logical, reusable functions/components; no unnecessary repetition.
+- **Efficiency:** Appropriate algorithms and data structures.
+- **Functionality & Correctness:** Requirements alignment—does it meet its apparent goal? Edge cases—input handling, error checking, security (e.g., SQL injection).
+- **Documentation:** Inline comments explaining complex logic and presence/quality of `README.md` or setup instructions.
+4.On the basis of evaluation done assign a overall score for each of these categories:
+- Code Quality (Score out of 35)
+- Functionality & Correctness (Score out of 45)
+- Documentation (Score out of 20)
 
----
-## Score Breakdown
-- **Code Quality:** [Your Score]/35
-- **Functionality & Correctness:** [Your Score]/45
-- **Documentation:** [Your Score]/20
-- **Total Score:** [Sum of Scores]/100
-
-## Detailed Feedback Report
-### Strengths
-- [Bulleted list of what the student did well, referencing specific evaluation parameters.]
-
-### Areas for Improvement
-- [Bulleted list of specific, actionable suggestions for improvement.]
-
-### Code-Specific Analysis
-- [Provide detailed analysis here. Reference specific file names and line numbers. Include short code snippets from the student's submission to explain issues or suggest improvements.]
----
+**FINAL OUTPUT (return only this JSON object):**
+```json
+{{
+  "overall_score": <number>,
+  "scores": {{
+    "code_quality": <number>,
+    "functionality_correctness": <number>,
+    "documentation": <number>
+  }},
+  "report": {{
+    "strengths": ["<A bullet list of the project's main strengths with specific examples and file references where applicable>"],
+    "areas_of_improvement": [
+      "<A bullet list of weaknesses or issues. For each item, include the file name, an illustrative code snippet or line reference when helpful, explain why it is a problem, and give a concrete, actionable fix or suggested change>],
+    "summary": "<A concise high-level paragraph describing project quality, readiness, risks, and recommended next steps.>"
+  }}
+}}
 
 **INPUT 1: PROJECT CRITERIA**
 ============================
@@ -255,7 +262,6 @@ Provide your evaluation in Markdown format with the following strict sections. D
 Now, please provide the evaluation based on the instructions and format above.
 """
     return clean_text(prompt_template)
-
 
 # =============================================================================
 # SNOWFLAKE CONNECTION
