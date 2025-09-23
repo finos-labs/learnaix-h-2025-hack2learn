@@ -10,8 +10,11 @@ import io
 import re
 import snowflake.connector
 import zipfile
+import json # <-- Added for JSON parsing
+
 
 from dotenv import load_dotenv
+
 
 # Document processing imports
 try:
@@ -20,15 +23,19 @@ try:
 except ImportError:
     PDF_AVAILABLE = False
 
+
 try:
     import docx
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
 
+
 load_dotenv()
 
+
 app = FastAPI()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,23 +45,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # =============================================================================
 # MODELS
 # =============================================================================
+
 
 class DocumentData(BaseModel):
     filename: str
     content: str  # Base64 encoded string
     type: str
 
+
 class ProjectRequest(BaseModel):
     topics: str
     complexity: str
     documents: Optional[List[DocumentData]] = []
 
+
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
+
 
 def clean_text(text: str, max_chars: int = 50000) -> str:
     """Clean text for Snowflake SQL compatibility"""
@@ -76,12 +88,14 @@ def clean_text(text: str, max_chars: int = 50000) -> str:
     # Escape single quotes for SQL
     return text.replace("'", "''")
 
+
 def extract_document_text(doc: DocumentData) -> str:
     """Extract and clean text from a single document object"""
     try:
         raw_text = ""
         # The content is expected to be a base64 encoded string
         decoded_content = base64.b64decode(doc.content)
+
 
         if doc.type == 'txt':
             raw_text = decoded_content.decode('utf-8', errors='ignore')
@@ -100,6 +114,7 @@ def extract_document_text(doc: DocumentData) -> str:
         print(f"Error processing {doc.filename}: {e}")
         return f"[Error processing {doc.filename}]"
 
+
 def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
     """
     Reads a zip file and formats its text-based contents into a single string
@@ -113,6 +128,7 @@ def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
         if item_info.is_dir() or '__pycache__' in item_info.filename or '.DS_Store' in item_info.filename:
             continue
 
+
         try:
             # Read and decode the file content
             with zip_file.open(item_info) as file_in_zip:
@@ -124,6 +140,7 @@ def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
                 formatted_parts.append(content_str)
                 formatted_parts.append("--- END FILE ---\n")
 
+
         except UnicodeDecodeError:
             skipped_files.append(item_info.filename)
             print(f"Skipping binary or non-UTF-8 file: {item_info.filename}")
@@ -131,14 +148,18 @@ def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
             skipped_files.append(item_info.filename)
             print(f"Error reading {item_info.filename} from zip: {e}")
 
+
     if skipped_files:
         formatted_parts.append(f"NOTE: The following binary or unreadable files were skipped: {', '.join(skipped_files)}")
 
+
     return "\n".join(formatted_parts)
+
 
 # =============================================================================
 # PROMPT BUILDERS
 # =============================================================================
+
 
 def build_project_prompt(topics: str, complexity: str, documents: Optional[List[DocumentData]] = []) -> str:
     """Builds a prompt for generating a course project."""
@@ -181,8 +202,10 @@ def build_project_prompt(topics: str, complexity: str, documents: Optional[List[
         if doc_body:
             prompt_parts = doc_header + doc_body + doc_footer + prompt_parts
 
+
     full_prompt = "\n".join(prompt_parts)
     return clean_text(full_prompt)
+
 
 def build_evaluation_prompt(project_criteria: str, submission_code: str) -> str:
     """Builds a prompt for evaluating a student's project submission."""
@@ -238,6 +261,7 @@ Now, please provide the evaluation based on the instructions and format above.
 # SNOWFLAKE CONNECTION
 # =============================================================================
 
+
 def get_snowflake_connection():
     """Create Snowflake connection"""
     return snowflake.connector.connect(
@@ -250,9 +274,11 @@ def get_snowflake_connection():
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
     )
 
+
 # =============================================================================
 # API ENDPOINTS
 # =============================================================================
+
 
 @app.post("/generate-project/")
 async def generate_project(request: ProjectRequest):
@@ -292,11 +318,15 @@ async def generate_project(request: ProjectRequest):
         raise HTTPException(status_code=500, detail=f"Failed to generate project: {str(e)}")
 
 
+# =============================================================================
+# UPDATED ENDPOINT
+# =============================================================================
 @app.post("/evaluate-project/")
 async def evaluate_project(criteria: str = Form(...), file: UploadFile = File(...)):
     """
     Endpoint to evaluate a student's project.
     Accepts project criteria and a zip file of the student's work.
+    Returns a structured JSON evaluation.
     """
     # 1. Validate input file
     if not file.filename.endswith('.zip'):
@@ -313,7 +343,7 @@ async def evaluate_project(criteria: str = Form(...), file: UploadFile = File(..
             formatted_code = format_zip_contents_for_llm(zip_ref)
 
         if not formatted_code.strip():
-             raise HTTPException(status_code=400, detail="The zip file seems to be empty or contains no readable text files.")
+            raise HTTPException(status_code=400, detail="The zip file seems to be empty or contains no readable text files.")
 
         # 3. Build the evaluation prompt
         prompt = build_evaluation_prompt(criteria, formatted_code)
@@ -336,24 +366,49 @@ async def evaluate_project(criteria: str = Form(...), file: UploadFile = File(..
         cursor.close()
         conn.close()
         
-        # 5. Return the result
+        # 5. Parse the LLM response and return as JSON
         if result and result[0]:
-            return JSONResponse(content={
-                "evaluation": result[0]
-            })
+            response_text = result[0]
+            
+            # Find the JSON block, even if there's other text
+            json_match = re.search(r'``````', response_text, re.DOTALL)
+            if not json_match:
+                # As a fallback, find the first '{' and last '}'
+                start = response_text.find('{')
+                end = response_text.rfind('}')
+                if start != -1 and end != -1:
+                    json_str = response_text[start:end+1]
+                else:
+                    raise HTTPException(status_code=500, detail="Could not find a JSON object in the model's response.")
+            else:
+                json_str = json_match.group(1)
+
+            try:
+                # Parse the extracted string into a dictionary
+                evaluation_json = json.loads(json_str)
+                return JSONResponse(content={"evaluation": evaluation_json})
+            except json.JSONDecodeError:
+                # If parsing fails, the model's output was malformed
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Failed to parse the JSON evaluation from the model's response."
+                )
         else:
             raise HTTPException(status_code=500, detail="No response from Snowflake Cortex during evaluation.")
             
     except Exception as e:
         print(f"Error in /evaluate-project/: {e}")
-        # Check if it's an HTTPException and re-raise, otherwise wrap it
+        # Re-raise HTTPException to preserve status code and detail
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=f"Failed to evaluate project: {str(e)}")
+        # Wrap other exceptions in a standard 500 error
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)
