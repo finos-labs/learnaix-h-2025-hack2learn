@@ -325,7 +325,7 @@ async def evaluate_project(criteria: str = Form(...), file: UploadFile = File(..
         
         sql = f"""
         SELECT SNOWFLAKE.CORTEX.COMPLETE(
-            'dee',
+            'claude-3-5-sonnet',
             '{prompt}'
         ) as response
         """
