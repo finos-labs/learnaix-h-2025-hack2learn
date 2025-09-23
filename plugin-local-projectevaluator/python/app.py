@@ -10,8 +10,11 @@ import io
 import re
 import snowflake.connector
 import zipfile
+import json # <-- Added for JSON parsing
+
 
 from dotenv import load_dotenv
+
 
 # Document processing imports
 try:
@@ -20,15 +23,19 @@ try:
 except ImportError:
     PDF_AVAILABLE = False
 
+
 try:
     import docx
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
 
+
 load_dotenv()
 
+
 app = FastAPI()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,23 +45,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # =============================================================================
 # MODELS
 # =============================================================================
+
 
 class DocumentData(BaseModel):
     filename: str
     content: str  # Base64 encoded string
     type: str
 
+
 class ProjectRequest(BaseModel):
     topics: str
     complexity: str
     documents: Optional[List[DocumentData]] = []
 
+
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
+
 
 def clean_text(text: str, max_chars: int = 50000) -> str:
     """Clean text for Snowflake SQL compatibility"""
@@ -76,12 +88,14 @@ def clean_text(text: str, max_chars: int = 50000) -> str:
     # Escape single quotes for SQL
     return text.replace("'", "''")
 
+
 def extract_document_text(doc: DocumentData) -> str:
     """Extract and clean text from a single document object"""
     try:
         raw_text = ""
         # The content is expected to be a base64 encoded string
         decoded_content = base64.b64decode(doc.content)
+
 
         if doc.type == 'txt':
             raw_text = decoded_content.decode('utf-8', errors='ignore')
@@ -100,6 +114,7 @@ def extract_document_text(doc: DocumentData) -> str:
         print(f"Error processing {doc.filename}: {e}")
         return f"[Error processing {doc.filename}]"
 
+
 def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
     """
     Reads a zip file and formats its text-based contents into a single string
@@ -113,6 +128,7 @@ def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
         if item_info.is_dir() or '__pycache__' in item_info.filename or '.DS_Store' in item_info.filename:
             continue
 
+
         try:
             # Read and decode the file content
             with zip_file.open(item_info) as file_in_zip:
@@ -124,6 +140,7 @@ def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
                 formatted_parts.append(content_str)
                 formatted_parts.append("--- END FILE ---\n")
 
+
         except UnicodeDecodeError:
             skipped_files.append(item_info.filename)
             print(f"Skipping binary or non-UTF-8 file: {item_info.filename}")
@@ -131,14 +148,18 @@ def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
             skipped_files.append(item_info.filename)
             print(f"Error reading {item_info.filename} from zip: {e}")
 
+
     if skipped_files:
         formatted_parts.append(f"NOTE: The following binary or unreadable files were skipped: {', '.join(skipped_files)}")
 
+
     return "\n".join(formatted_parts)
+
 
 # =============================================================================
 # PROMPT BUILDERS
 # =============================================================================
+
 
 def build_project_prompt(topics: str, complexity: str, documents: Optional[List[DocumentData]] = []) -> str:
     """Builds a prompt for generating a course project."""
@@ -146,7 +167,7 @@ def build_project_prompt(topics: str, complexity: str, documents: Optional[List[
     prompt_parts = [
         "**Role:** You are an expert instructional designer and curriculum developer. Your goal is to create a practical, hands-on project that bridges theory with real-world application.",
         "",
-        "**Task:** Generate a comprehensive project problem statement based on the provided topics and reference materials. The project must be well-structured, clear, and ready for an instructor to review.",
+        "**Task:** Generate a comprehensive project problem statement based on the provided topics and reference materials. The problem statemnt must be well-structured, clear, and ready for an instructor to review.",
         "",
         "**Primary Inputs:**",
         f"- **Topic(s):** {topics}",
@@ -181,43 +202,52 @@ def build_project_prompt(topics: str, complexity: str, documents: Optional[List[
         if doc_body:
             prompt_parts = doc_header + doc_body + doc_footer + prompt_parts
 
+
     full_prompt = "\n".join(prompt_parts)
     return clean_text(full_prompt)
+
 
 def build_evaluation_prompt(project_criteria: str, submission_code: str) -> str:
     """Builds a prompt for evaluating a student's project submission."""
     # This prompt is updated to reflect the detailed scoring matrix.
     prompt_template = f"""
-**Role:** You are an expert code reviewer and a helpful teaching assistant.
+**Role:** You are **Project Insight**, an AI-powered code analysis and evaluation expert.Your goal is to meticulously review and provide a comprehensive assessment of a student-submitted project.
 
 **Task:** Evaluate a student's project submission based on a given set of criteria. Your evaluation must be fair, detailed, and directly address the specified evaluation parameters.
 
-**Evaluation Parameters & Scoring:**
-You must evaluate the project across these three categories and assign a score for each:
-1.  **Code Quality (Score out of 35):** Assess clean coding standards (e.g., PEP 8 in Python), modularity, variable naming, and use of efficient algorithms.
-2.  **Functionality & Correctness (Score out of 45):** Verify if the code meets all project requirements, runs without errors, and correctly handles potential edge cases.
-3.  **Documentation (Score out of 20):** Check for meaningful comments, clear function docstrings, and a README or usage instructions if applicable.
+**Primary Inputs:** All the files in the project are supplied in the format of its name and content.
 
-**Output Format:**
-Provide your evaluation in Markdown format with the following strict sections. Do not add any other sections.
+**Evaluation Steps:**
+1.**Language & Framework Detection:** Identify programming language(s) using file extensions and code content. Detect notable frameworks or technologies (e.g., React, Node.js, Django).
+2.**Structure & Intent:** Analyze the entire project to understand its purpose and architecture. Identify front-end, back-end, and database components if present.
+3. **Per-File Analysis:** For each file, silently reason through these checks (do not expose internal reasoning):
+- **Code Quality:** Style, consistency, and obvious bugs.
+- **Clarity & Readability:** Descriptive variable/function names and formatting.
+- **Modularity:** Logical, reusable functions/components; no unnecessary repetition.
+- **Efficiency:** Appropriate algorithms and data structures.
+- **Functionality & Correctness:** Requirements alignment—does it meet its apparent goal? Edge cases—input handling, error checking, security (e.g., SQL injection).
+- **Documentation:** Inline comments explaining complex logic and presence/quality of `README.md` or setup instructions.
+4.On the basis of evaluation done assign a overall score for each of these categories:
+- Code Quality (Score out of 35)
+- Functionality & Correctness (Score out of 45)
+- Documentation (Score out of 20)
 
----
-## Score Breakdown
-- **Code Quality:** [Your Score]/35
-- **Functionality & Correctness:** [Your Score]/45
-- **Documentation:** [Your Score]/20
-- **Total Score:** [Sum of Scores]/100
-
-## Detailed Feedback Report
-### Strengths
-- [Bulleted list of what the student did well, referencing specific evaluation parameters.]
-
-### Areas for Improvement
-- [Bulleted list of specific, actionable suggestions for improvement.]
-
-### Code-Specific Analysis
-- [Provide detailed analysis here. Reference specific file names and line numbers. Include short code snippets from the student's submission to explain issues or suggest improvements.]
----
+**FINAL OUTPUT (return only this JSON object):**
+```json
+{{
+  "overall_score": <number>,
+  "scores": {{
+    "code_quality": <number>,
+    "functionality_correctness": <number>,
+    "documentation": <number>
+  }},
+  "report": {{
+    "strengths": ["<A bullet list of the project's main strengths with specific examples and file references where applicable>"],
+    "areas_of_improvement": [
+      "<A bullet list of weaknesses or issues. For each item, include the file name, an illustrative code snippet or line reference when helpful, explain why it is a problem, and give a concrete, actionable fix or suggested change>],
+    "summary": "<A concise high-level paragraph describing project quality, readiness, risks, and recommended next steps.>"
+  }}
+}}
 
 **INPUT 1: PROJECT CRITERIA**
 ============================
@@ -233,10 +263,10 @@ Now, please provide the evaluation based on the instructions and format above.
 """
     return clean_text(prompt_template)
 
-
 # =============================================================================
 # SNOWFLAKE CONNECTION
 # =============================================================================
+
 
 def get_snowflake_connection():
     """Create Snowflake connection"""
@@ -250,9 +280,11 @@ def get_snowflake_connection():
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
     )
 
+
 # =============================================================================
 # API ENDPOINTS
 # =============================================================================
+
 
 @app.post("/generate-project/")
 async def generate_project(request: ProjectRequest):
@@ -292,11 +324,15 @@ async def generate_project(request: ProjectRequest):
         raise HTTPException(status_code=500, detail=f"Failed to generate project: {str(e)}")
 
 
+# =============================================================================
+# UPDATED ENDPOINT
+# =============================================================================
 @app.post("/evaluate-project/")
 async def evaluate_project(criteria: str = Form(...), file: UploadFile = File(...)):
     """
     Endpoint to evaluate a student's project.
     Accepts project criteria and a zip file of the student's work.
+    Returns a structured JSON evaluation.
     """
     # 1. Validate input file
     if not file.filename.endswith('.zip'):
@@ -313,7 +349,7 @@ async def evaluate_project(criteria: str = Form(...), file: UploadFile = File(..
             formatted_code = format_zip_contents_for_llm(zip_ref)
 
         if not formatted_code.strip():
-             raise HTTPException(status_code=400, detail="The zip file seems to be empty or contains no readable text files.")
+            raise HTTPException(status_code=400, detail="The zip file seems to be empty or contains no readable text files.")
 
         # 3. Build the evaluation prompt
         prompt = build_evaluation_prompt(criteria, formatted_code)
@@ -336,24 +372,49 @@ async def evaluate_project(criteria: str = Form(...), file: UploadFile = File(..
         cursor.close()
         conn.close()
         
-        # 5. Return the result
+        # 5. Parse the LLM response and return as JSON
         if result and result[0]:
-            return JSONResponse(content={
-                "evaluation": result[0]
-            })
+            response_text = result[0]
+            
+            # Find the JSON block, even if there's other text
+            json_match = re.search(r'``````', response_text, re.DOTALL)
+            if not json_match:
+                # As a fallback, find the first '{' and last '}'
+                start = response_text.find('{')
+                end = response_text.rfind('}')
+                if start != -1 and end != -1:
+                    json_str = response_text[start:end+1]
+                else:
+                    raise HTTPException(status_code=500, detail="Could not find a JSON object in the model's response.")
+            else:
+                json_str = json_match.group(1)
+
+            try:
+                # Parse the extracted string into a dictionary
+                evaluation_json = json.loads(json_str)
+                return JSONResponse(content={"evaluation": evaluation_json})
+            except json.JSONDecodeError:
+                # If parsing fails, the model's output was malformed
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Failed to parse the JSON evaluation from the model's response."
+                )
         else:
             raise HTTPException(status_code=500, detail="No response from Snowflake Cortex during evaluation.")
             
     except Exception as e:
         print(f"Error in /evaluate-project/: {e}")
-        # Check if it's an HTTPException and re-raise, otherwise wrap it
+        # Re-raise HTTPException to preserve status code and detail
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=f"Failed to evaluate project: {str(e)}")
+        # Wrap other exceptions in a standard 500 error
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)
