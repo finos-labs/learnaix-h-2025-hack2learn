@@ -41,7 +41,7 @@ function display_service_selection() {
     echo '<div style="font-size: 48px; margin-bottom: 15px;">🎯</div>';
     echo '<h3 style="margin-bottom: 15px; font-size: 22px;">' . get_string('project_evaluator', 'local_projectevaluator') . '</h3>';
     echo '<p style="margin-bottom: 20px; opacity: 0.9; line-height: 1.5;">' . get_string('service_description_evaluator', 'local_projectevaluator') . '</p>';
-    echo '<div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 25px; display: inline-block; font-weight: bold;">Coming Soon →</div>';
+    echo '<div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 25px; display: inline-block; font-weight: bold;">Get Started →</div>';
     echo '</div>';
     
     echo '</div>';
@@ -49,10 +49,6 @@ function display_service_selection() {
     
     echo '<script>
     function selectService(service) {
-        if (service === "evaluator") {
-            alert("🚧 AI-based Project Evaluator is coming soon! Stay tuned for this exciting feature.");
-            return;
-        }
         window.location.href = "' . $CFG->wwwroot . '/local/projectevaluator/index.php?service=" + service;
     }
     </script>';
@@ -667,30 +663,8 @@ if (empty($selected_service)) {
         exit;
     }
 } else if ($selected_service === 'evaluator') {
-    // Project Evaluator AI service (placeholder for future implementation)
-    echo $OUTPUT->header();
-    display_service_breadcrumb(get_string('project_evaluator', 'local_projectevaluator'));
-    
-    echo '<div style="text-align: center; padding: 60px 20px; max-width: 600px; margin: 0 auto;">';
-    echo '<div style="font-size: 72px; margin-bottom: 20px;">🚧</div>';
-    echo '<h2 style="color: #2d3748; margin-bottom: 15px;">AI-based Project Evaluator</h2>';
-    echo '<p style="color: #718096; font-size: 18px; line-height: 1.6; margin-bottom: 30px;">This exciting feature is currently under development. It will provide AI-powered project evaluation, assessment, and feedback capabilities.</p>';
-    echo '<div style="background: #f7fafc; border: 2px dashed #cbd5e0; border-radius: 10px; padding: 20px; margin: 20px 0;">';
-    echo '<h4 style="color: #4a5568; margin-bottom: 10px;">🔮 Coming Soon Features:</h4>';
-    echo '<ul style="text-align: left; color: #718096; line-height: 1.8;">';
-    echo '<li>Automated project assessment and scoring</li>';
-    echo '<li>Detailed feedback and improvement suggestions</li>';
-    echo '<li>Code quality analysis and recommendations</li>';
-    echo '<li>Plagiarism detection and originality checking</li>';
-    echo '<li>Learning outcome achievement tracking</li>';
-    echo '</ul>';
-    echo '</div>';
-    echo '<a href="' . $CFG->wwwroot . '/local/projectevaluator/index.php" class="btn btn-primary">← Back to Services</a>';
-    echo '</div>';
-    
-    
-    echo $OUTPUT->footer();
-    exit;
+    // Redirect to evaluator dashboard
+    redirect($CFG->wwwroot . '/local/projectevaluator/evaluator/dashboard.php');
 }
 
 // Should not reach here - redirect to service selection
