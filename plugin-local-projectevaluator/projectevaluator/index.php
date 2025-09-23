@@ -8,10 +8,65 @@ require_once($CFG->libdir . '/accesslib.php');
 require_login();
 require_capability('local/projectevaluator:view', context_system::instance());
 
+// Get the selected service from URL parameter first
+$selected_service = optional_param('service', '', PARAM_ALPHA);
+
 $PAGE->set_context(context_system::instance());
-$PAGE->set_url('/local/projectevaluator/index.php');
+$PAGE->set_url('/local/projectevaluator/index.php', array('service' => $selected_service));
 $PAGE->set_title(get_string('pluginname', 'local_projectevaluator'));
 $PAGE->set_heading(get_string('pluginname', 'local_projectevaluator'));
+
+// Service selection interface
+function display_service_selection() {
+    global $OUTPUT, $CFG;
+    
+    echo '<div style="max-width: 800px; margin: 20px auto; padding: 20px;">';
+    echo '<div style="text-align: center; margin-bottom: 30px;">';
+    echo '<h2 style="color: #2d3748; margin-bottom: 10px;">🤖 AI-Project Hub</h2>';
+    echo '<p style="color: #718096; font-size: 16px;">Choose from our AI-powered project services</p>';
+    echo '</div>';
+    
+    echo '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 30px;">';
+    
+    // Project Generator AI Service
+    echo '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; padding: 25px; color: white; text-align: center; cursor: pointer; transition: transform 0.3s ease, box-shadow 0.3s ease;" onclick="selectService(\'generator\')" onmouseover="this.style.transform=\'scale(1.05)\'; this.style.boxShadow=\'0 10px 25px rgba(102, 126, 234, 0.3)\'" onmouseout="this.style.transform=\'scale(1)\'; this.style.boxShadow=\'none\'">';
+    echo '<div style="font-size: 48px; margin-bottom: 15px;">🚀</div>';
+    echo '<h3 style="margin-bottom: 15px; font-size: 22px;">' . get_string('project_generator', 'local_projectevaluator') . '</h3>';
+    echo '<p style="margin-bottom: 20px; opacity: 0.9; line-height: 1.5;">' . get_string('service_description_generator', 'local_projectevaluator') . '</p>';
+    echo '<div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 25px; display: inline-block; font-weight: bold;">Get Started →</div>';
+    echo '</div>';
+    
+    // Project Evaluator AI Service  
+    echo '<div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 15px; padding: 25px; color: white; text-align: center; cursor: pointer; transition: transform 0.3s ease, box-shadow 0.3s ease;" onclick="selectService(\'evaluator\')" onmouseover="this.style.transform=\'scale(1.05)\'; this.style.boxShadow=\'0 10px 25px rgba(240, 147, 251, 0.3)\'" onmouseout="this.style.transform=\'scale(1)\'; this.style.boxShadow=\'none\'">';
+    echo '<div style="font-size: 48px; margin-bottom: 15px;">🎯</div>';
+    echo '<h3 style="margin-bottom: 15px; font-size: 22px;">' . get_string('project_evaluator', 'local_projectevaluator') . '</h3>';
+    echo '<p style="margin-bottom: 20px; opacity: 0.9; line-height: 1.5;">' . get_string('service_description_evaluator', 'local_projectevaluator') . '</p>';
+    echo '<div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 25px; display: inline-block; font-weight: bold;">Coming Soon →</div>';
+    echo '</div>';
+    
+    echo '</div>';
+    echo '</div>';
+    
+    echo '<script>
+    function selectService(service) {
+        if (service === "evaluator") {
+            alert("🚧 AI-based Project Evaluator is coming soon! Stay tuned for this exciting feature.");
+            return;
+        }
+        window.location.href = "' . $CFG->wwwroot . '/local/projectevaluator/index.php?service=" + service;
+    }
+    </script>';
+}
+
+// Navigation breadcrumb for services
+function display_service_breadcrumb($service_name) {
+    global $CFG;
+    echo '<div style="margin: 15px 0; padding: 10px 0; border-bottom: 1px solid #e2e8f0;">';
+    echo '<a href="' . $CFG->wwwroot . '/local/projectevaluator/index.php" style="color: #4299e1; text-decoration: none; font-weight: 500;">← ' . get_string('back_to_services', 'local_projectevaluator') . '</a>';
+    echo '<span style="margin: 0 10px; color: #a0aec0;">|</span>';
+    echo '<span style="color: #2d3748; font-weight: 600;">' . $service_name . '</span>';
+    echo '</div>';
+}
 
 
 
@@ -19,6 +74,10 @@ class project_form extends moodleform {
     public function definition() {
         global $USER, $DB;
         $mform = $this->_form;
+
+        // Add hidden service field to maintain state
+        $mform->addElement('hidden', 'service', 'generator');
+        $mform->setType('service', PARAM_ALPHA);
 
         // Course selector.
         $all_courses = enrol_get_my_courses();
@@ -54,6 +113,10 @@ class activity_form extends moodleform {
         
         $mform = $this->_form;
 
+        // Add hidden service field to maintain state
+        $mform->addElement('hidden', 'service', 'generator');
+        $mform->setType('service', PARAM_ALPHA);
+        
         $mform->addElement('hidden', 'project_description');
         $mform->setType('project_description', PARAM_RAW);
         $mform->addElement('hidden', 'courseid');
@@ -100,10 +163,20 @@ class activity_form extends moodleform {
 $mform = new project_form();
 $activityform = new activity_form();
 
-if ($mform->is_cancelled()) {
-    redirect($CFG->wwwroot);
-} else if ($data = $mform->get_data()) {
-    $topics = $data->topics;
+// Handle service routing
+if (empty($selected_service)) {
+    // Show service selection interface
+    echo $OUTPUT->header();
+    display_service_selection();
+    echo $OUTPUT->footer();
+    exit;
+} else if ($selected_service === 'generator') {
+    // Handle Project Generator AI service
+    if ($mform->is_cancelled()) {
+        redirect($CFG->wwwroot . '/local/projectevaluator/index.php');
+    } else if ($data = $mform->get_data()) {
+        // Existing project generation logic continues here...
+        $topics = $data->topics;
     $complexity = $data->complexity;
     $courseid = $data->courseid;
 
@@ -415,142 +488,176 @@ if ($mform->is_cancelled()) {
         debugging("Backend HTTP error: " . $httpcode . ", Response: " . $response, DEBUG_DEVELOPER);
     }
 
+    
     echo $OUTPUT->footer();
     exit;
 
-} else if ($activitydata = $activityform->get_data()) {
-    global $CFG, $DB, $USER;
-    require_once($CFG->dirroot.'/course/lib.php');
-    require_once($CFG->dirroot.'/mod/assign/lib.php');
+    } else if ($activitydata = $activityform->get_data()) {
+        // Handle activity creation within the generator service
+        global $CFG, $DB, $USER;
+        require_once($CFG->dirroot.'/course/lib.php');
+        require_once($CFG->dirroot.'/mod/assign/lib.php');
 
+        echo $OUTPUT->header();
+        display_service_breadcrumb(get_string('project_generator', 'local_projectevaluator'));
+        
+        // Validate and get the course
+        if (!$course = $DB->get_record('course', array('id' => $activitydata->courseid))) {
+            echo $OUTPUT->notification('Course not found', 'error');
+            echo $OUTPUT->continue_button(new moodle_url('/local/projectevaluator/index.php?service=generator'));
+            echo $OUTPUT->footer();
+            exit;
+        }
+
+        // Check permissions
+        $context = context_course::instance($course->id);
+        require_capability('moodle/course:manageactivities', $context);
+
+        // Check if activity name already exists in this course
+        if ($DB->record_exists('assign', array('course' => $course->id, 'name' => $activitydata->title))) {
+            echo $OUTPUT->notification('An assignment with this name already exists in the course', 'error');
+            echo $OUTPUT->continue_button(new moodle_url('/local/projectevaluator/index.php?service=generator'));
+            echo $OUTPUT->footer();
+            exit;
+        }
+        
+        try {
+            // Get the module record
+            if (!$module = $DB->get_record('modules', array('name' => 'assign'))) {
+                throw new moodle_exception('Assignment module is not installed');
+            }
+            
+            // Create module info
+            $moduleinfo = new stdClass();
+            
+            // Required fields
+            $moduleinfo->modulename = 'assign';
+            $moduleinfo->module = $module->id;
+            $moduleinfo->course = $course->id;
+            $moduleinfo->coursemodule = 0;
+            $moduleinfo->section = $activitydata->section;
+            $moduleinfo->instance = 0;
+            $moduleinfo->add = 'assign';
+            
+            // Basic settings
+            $moduleinfo->name = clean_param($activitydata->title, PARAM_TEXT);
+            $moduleinfo->intro = clean_param($activitydata->project_description, PARAM_RAW);
+            $moduleinfo->introformat = FORMAT_HTML;
+            $moduleinfo->visible = 1;
+            $moduleinfo->visibleoncoursepage = 1;
+            $moduleinfo->cmidnumber = '';
+            $moduleinfo->groupmode = NOGROUPS;
+            $moduleinfo->groupingid = 0;
+            
+            // Assignment settings
+            $moduleinfo->duedate = !empty($activitydata->duedate) ? $activitydata->duedate : 0;
+            $moduleinfo->allowsubmissionsfromdate = time();
+            $moduleinfo->cutoffdate = 0;
+            $moduleinfo->gradingduedate = 0;
+            $moduleinfo->grade = 100;
+            $moduleinfo->gradecat = 0;
+            $moduleinfo->timemodified = time();
+            
+            // Simple submission settings
+            $moduleinfo->submissiondrafts = 0;
+            $moduleinfo->requiresubmissionstatement = 0;
+            $moduleinfo->sendnotifications = 0;
+            $moduleinfo->sendlatenotifications = 0;
+            $moduleinfo->teamsubmission = 0;
+            $moduleinfo->requireallteammemberssubmit = 0;
+            $moduleinfo->teamsubmissiongroupingid = 0;
+            $moduleinfo->blindmarking = 0;
+            $moduleinfo->hidegrader = 0;
+            $moduleinfo->markingworkflow = 0;
+            $moduleinfo->markingallocation = 0;
+            $moduleinfo->preventsubmissionnotingroup = 0;
+            
+            // Enable basic submission types
+            $moduleinfo->assignsubmission_onlinetext_enabled = 1;
+            $moduleinfo->assignsubmission_onlinetext_wordlimit = 0;
+            $moduleinfo->assignsubmission_onlinetext_wordlimitenabled = 0;
+            $moduleinfo->assignsubmission_file_enabled = 1;
+            $moduleinfo->assignsubmission_file_maxfiles = 10;
+            $moduleinfo->assignsubmission_file_maxsizebytes = 1048576;
+            $moduleinfo->assignsubmission_file_filetypes = '';
+            
+            // Enable basic feedback
+            $moduleinfo->assignfeedback_comments_enabled = 1;
+            $moduleinfo->assignfeedback_comments_commentinline = 0;
+            $moduleinfo->assignfeedback_file_enabled = 0;
+            
+            // Completion settings
+            $moduleinfo->completionexpected = 0;
+            $moduleinfo->completionunlocked = 0;
+            $moduleinfo->completiongradeitemnumber = null;
+            $moduleinfo->availability = null;
+            $moduleinfo->showavailability = 0;
+            
+            // Create the assignment
+            $result = add_moduleinfo($moduleinfo, $course);
+            
+            if (!$result || !isset($result->coursemodule)) {
+                throw new moodle_exception('Failed to create assignment');
+            }
+            
+            // Rebuild course cache
+            rebuild_course_cache($course->id, true);
+
+            // Show success message
+            echo $OUTPUT->notification('Assignment "' . s($moduleinfo->name) . '" created successfully!', 'success');
+            
+            // Create links
+            $viewurl = new moodle_url('/mod/assign/view.php', array('id' => $result->coursemodule));
+            $courseurl = new moodle_url('/course/view.php', array('id' => $course->id));
+            
+            echo html_writer::div(
+                html_writer::link($viewurl, 'View Assignment', array('class' => 'btn btn-primary')) . ' ' .
+                html_writer::link($courseurl, 'Return to Course', array('class' => 'btn btn-secondary')),
+                'mt-3'
+            );
+            
+        } catch (Exception $e) {
+            echo $OUTPUT->notification('Error creating assignment: ' . $e->getMessage(), 'error');
+            echo $OUTPUT->continue_button(new moodle_url('/local/projectevaluator/index.php?service=generator'));
+        }
+        
+        echo $OUTPUT->footer();
+        exit;
+    } else {
+        // Show the project generator form
+        echo $OUTPUT->header();
+        display_service_breadcrumb(get_string('project_generator', 'local_projectevaluator'));
+        $mform->display();
+        echo $OUTPUT->footer();
+        exit;
+    }
+} else if ($selected_service === 'evaluator') {
+    // Project Evaluator AI service (placeholder for future implementation)
     echo $OUTPUT->header();
+    display_service_breadcrumb(get_string('project_evaluator', 'local_projectevaluator'));
     
-    // Validate and get the course
-    if (!$course = $DB->get_record('course', array('id' => $activitydata->courseid))) {
-        echo $OUTPUT->notification('Course not found', 'error');
-        echo $OUTPUT->continue_button(new moodle_url('/local/projectevaluator/index.php'));
-        echo $OUTPUT->footer();
-        exit;
-    }
-
-    // Check permissions
-    $context = context_course::instance($course->id);
-    require_capability('moodle/course:manageactivities', $context);
-
-    // Check if activity name already exists in this course
-    if ($DB->record_exists('assign', array('course' => $course->id, 'name' => $activitydata->title))) {
-        echo $OUTPUT->notification('An assignment with this name already exists in the course', 'error');
-        echo $OUTPUT->continue_button(new moodle_url('/local/projectevaluator/index.php'));
-        echo $OUTPUT->footer();
-        exit;
-    }
+    echo '<div style="text-align: center; padding: 60px 20px; max-width: 600px; margin: 0 auto;">';
+    echo '<div style="font-size: 72px; margin-bottom: 20px;">🚧</div>';
+    echo '<h2 style="color: #2d3748; margin-bottom: 15px;">AI-based Project Evaluator</h2>';
+    echo '<p style="color: #718096; font-size: 18px; line-height: 1.6; margin-bottom: 30px;">This exciting feature is currently under development. It will provide AI-powered project evaluation, assessment, and feedback capabilities.</p>';
+    echo '<div style="background: #f7fafc; border: 2px dashed #cbd5e0; border-radius: 10px; padding: 20px; margin: 20px 0;">';
+    echo '<h4 style="color: #4a5568; margin-bottom: 10px;">🔮 Coming Soon Features:</h4>';
+    echo '<ul style="text-align: left; color: #718096; line-height: 1.8;">';
+    echo '<li>Automated project assessment and scoring</li>';
+    echo '<li>Detailed feedback and improvement suggestions</li>';
+    echo '<li>Code quality analysis and recommendations</li>';
+    echo '<li>Plagiarism detection and originality checking</li>';
+    echo '<li>Learning outcome achievement tracking</li>';
+    echo '</ul>';
+    echo '</div>';
+    echo '<a href="' . $CFG->wwwroot . '/local/projectevaluator/index.php" class="btn btn-primary">← Back to Services</a>';
+    echo '</div>';
     
-    try {
-        // Get the module record
-        if (!$module = $DB->get_record('modules', array('name' => 'assign'))) {
-            throw new moodle_exception('Assignment module is not installed');
-        }
-        
-        // Create module info
-        $moduleinfo = new stdClass();
-        
-        // Required fields
-        $moduleinfo->modulename = 'assign';
-        $moduleinfo->module = $module->id;
-        $moduleinfo->course = $course->id;
-        $moduleinfo->coursemodule = 0;
-        $moduleinfo->section = $activitydata->section;
-        $moduleinfo->instance = 0;
-        $moduleinfo->add = 'assign';
-        
-        // Basic settings
-        $moduleinfo->name = clean_param($activitydata->title, PARAM_TEXT);
-        // Store HTML content directly - it's already converted from markdown
-        $moduleinfo->intro = clean_param($activitydata->project_description, PARAM_RAW);
-        $moduleinfo->introformat = FORMAT_HTML;
-        $moduleinfo->visible = 1;
-        $moduleinfo->visibleoncoursepage = 1;
-        $moduleinfo->cmidnumber = '';
-        $moduleinfo->groupmode = NOGROUPS;
-        $moduleinfo->groupingid = 0;
-        
-        // Assignment settings
-        $moduleinfo->duedate = !empty($activitydata->duedate) ? $activitydata->duedate : 0;
-        $moduleinfo->allowsubmissionsfromdate = time();
-        $moduleinfo->cutoffdate = 0;
-        $moduleinfo->gradingduedate = 0;
-        $moduleinfo->grade = 100;
-        $moduleinfo->gradecat = 0;
-        $moduleinfo->timemodified = time();
-        
-        // Simple submission settings
-        $moduleinfo->submissiondrafts = 0;
-        $moduleinfo->requiresubmissionstatement = 0;
-        $moduleinfo->sendnotifications = 0;
-        $moduleinfo->sendlatenotifications = 0;
-        $moduleinfo->teamsubmission = 0;
-        $moduleinfo->requireallteammemberssubmit = 0;
-        $moduleinfo->teamsubmissiongroupingid = 0;
-        $moduleinfo->blindmarking = 0;
-        $moduleinfo->hidegrader = 0;
-        $moduleinfo->markingworkflow = 0;
-        $moduleinfo->markingallocation = 0;
-        $moduleinfo->preventsubmissionnotingroup = 0;
-        
-        // Enable basic submission types
-        $moduleinfo->assignsubmission_onlinetext_enabled = 1;
-        $moduleinfo->assignsubmission_onlinetext_wordlimit = 0;
-        $moduleinfo->assignsubmission_onlinetext_wordlimitenabled = 0;
-        $moduleinfo->assignsubmission_file_enabled = 1;
-        $moduleinfo->assignsubmission_file_maxfiles = 10;
-        $moduleinfo->assignsubmission_file_maxsizebytes = 1048576;
-        $moduleinfo->assignsubmission_file_filetypes = '';
-        
-        // Enable basic feedback
-        $moduleinfo->assignfeedback_comments_enabled = 1;
-        $moduleinfo->assignfeedback_comments_commentinline = 0;
-        $moduleinfo->assignfeedback_file_enabled = 0;
-        
-        // Completion settings
-        $moduleinfo->completionexpected = 0;
-        $moduleinfo->completionunlocked = 0;
-        $moduleinfo->completiongradeitemnumber = null;
-        $moduleinfo->availability = null;
-        $moduleinfo->showavailability = 0;
-        
-        // Create the assignment
-        $result = add_moduleinfo($moduleinfo, $course);
-        
-        if (!$result || !isset($result->coursemodule)) {
-            throw new moodle_exception('Failed to create assignment');
-        }
-        
-        // Rebuild course cache
-        rebuild_course_cache($course->id, true);
-
-        // Show success message
-        echo $OUTPUT->notification('Assignment "' . s($moduleinfo->name) . '" created successfully!', 'success');
-        
-        // Create links
-        $viewurl = new moodle_url('/mod/assign/view.php', array('id' => $result->coursemodule));
-        $courseurl = new moodle_url('/course/view.php', array('id' => $course->id));
-        
-        echo html_writer::div(
-            html_writer::link($viewurl, 'View Assignment', array('class' => 'btn btn-primary')) . ' ' .
-            html_writer::link($courseurl, 'Return to Course', array('class' => 'btn btn-secondary')),
-            'mt-3'
-        );
-        
-    } catch (Exception $e) {
-        echo $OUTPUT->notification('Error creating assignment: ' . $e->getMessage(), 'error');
-        echo $OUTPUT->continue_button(new moodle_url('/local/projectevaluator/index.php'));
-    }
     
     echo $OUTPUT->footer();
     exit;
 }
 
-echo $OUTPUT->header();
-$mform->display();
-echo $OUTPUT->footer();
+// Should not reach here - redirect to service selection
+redirect($CFG->wwwroot . '/local/projectevaluator/index.php');
 ?>

@@ -1,5 +1,13 @@
 <?php
-$string['pluginname'] = 'Project Evaluator';
+$string['pluginname'] = 'AI-Project Hub';
+$string['service_selection'] = 'Select AI Service';
+$string['project_generator'] = 'Project Generator AI';
+$string['project_evaluator'] = 'AI-based Project Evaluator';
+$string['service_description_generator'] = 'Generate comprehensive project descriptions and assignments using AI';
+$string['service_description_evaluator'] = 'Evaluate and analyze existing projects using AI-powered assessment';
+$string['select_service'] = 'Choose Service';
+$string['back_to_services'] = 'Back to Services';
+$string['get_started'] = 'Get Started';
 $string['topics'] = 'Project Topics';
 $string['topic_docs'] = 'Topic Documents';
 $string['complexity'] = 'Complexity';
