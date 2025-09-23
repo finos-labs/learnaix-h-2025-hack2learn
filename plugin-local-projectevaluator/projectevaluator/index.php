@@ -293,10 +293,13 @@ if (empty($selected_service)) {
                  htmlspecialchars($project_description, ENT_QUOTES, 'UTF-8') . '</textarea>';
             echo '</div>';
             
-            // Action buttons (hidden by default)
-            echo '<div id="edit-actions" style="display: none; background: #f8f9fa; padding: 15px; border-top: 1px solid #dee2e6; text-align: right;">';
-            echo '<button id="save-btn" class="btn btn-success btn-sm" style="margin-right: 10px;">💾 Save Changes</button>';
-            echo '<button id="cancel-btn" class="btn btn-outline-secondary btn-sm">❌ Cancel</button>';
+            // Action buttons (always visible)
+            echo '<div id="edit-actions" style="background: #f8f9fa; padding: 15px; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center;">';
+            echo '<div>';
+            echo '<button id="save-btn" class="btn btn-success btn-sm" style="margin-right: 10px;" disabled>💾 Save Changes</button>';
+            echo '<button id="cancel-btn" class="btn btn-outline-secondary btn-sm">🔄 Reset</button>';
+            echo '</div>';
+            echo '<div style="color: #6c757d; font-size: 12px;" id="edit-status">No changes made</div>';
             echo '</div>';
             
             // Status message
@@ -314,10 +317,12 @@ if (empty($selected_service)) {
                 var saveBtn = document.getElementById("save-btn");
                 var cancelBtn = document.getElementById("cancel-btn");
                 var statusMessage = document.getElementById("status-message");
+                var editStatus = document.getElementById("edit-status");
                 
                 var isEditing = false;
                 var originalContent = descriptionEditor.value;
                 var originalHtml = descriptionDisplay.innerHTML;
+                var hasChanges = false;
                 
                 // Simple markdown to HTML converter
                 function markdownToHtml(text) {
@@ -357,15 +362,34 @@ if (empty($selected_service)) {
                     }, 3000);
                 }
                 
+                function updateEditStatus() {
+                    var currentContent = descriptionEditor.value.trim();
+                    hasChanges = currentContent !== originalContent;
+                    
+                    if (hasChanges) {
+                        saveBtn.disabled = false;
+                        saveBtn.className = "btn btn-success btn-sm";
+                        saveBtn.style.opacity = "1";
+                        editStatus.textContent = "Unsaved changes";
+                        editStatus.style.color = "#dc3545";
+                    } else {
+                        saveBtn.disabled = true;
+                        saveBtn.className = "btn btn-outline-success btn-sm";
+                        saveBtn.style.opacity = "0.6";
+                        editStatus.textContent = "No changes made";
+                        editStatus.style.color = "#6c757d";
+                    }
+                }
+                
                 function enableEdit() {
                     if (isEditing) return;
                     
                     isEditing = true;
                     descriptionDisplay.style.display = "none";
                     descriptionEditor.style.display = "block";
-                    editActions.style.display = "block";
                     editToggleBtn.textContent = "👁️ Preview";
                     editToggleBtn.className = "btn btn-sm btn-outline-info";
+                    editToggleBtn.title = "Switch to preview mode";
                     descriptionContent.style.cursor = "default";
                     
                     // Focus the editor
@@ -374,15 +398,17 @@ if (empty($selected_service)) {
                     // Auto-resize textarea
                     descriptionEditor.style.height = "auto";
                     descriptionEditor.style.height = descriptionEditor.scrollHeight + "px";
+                    
+                    updateEditStatus();
                 }
                 
                 function disableEdit() {
                     isEditing = false;
                     descriptionDisplay.style.display = "block";
                     descriptionEditor.style.display = "none";
-                    editActions.style.display = "none";
                     editToggleBtn.textContent = "✏️ Edit";
                     editToggleBtn.className = "btn btn-sm btn-outline-primary";
+                    editToggleBtn.title = "Switch to edit mode";
                     descriptionContent.style.cursor = "text";
                 }
                 
@@ -402,14 +428,17 @@ if (empty($selected_service)) {
                     }
                 });
                 
-                // Auto-resize textarea while typing
+                // Auto-resize textarea and check for changes while typing
                 descriptionEditor.addEventListener("input", function() {
                     this.style.height = "auto";
                     this.style.height = this.scrollHeight + "px";
+                    updateEditStatus();
                 });
                 
                 // Save button click
                 saveBtn.addEventListener("click", function() {
+                    if (!hasChanges) return;
+                    
                     var newContent = descriptionEditor.value.trim();
                     if (newContent === "") {
                         showStatus("Description cannot be empty", "error");
@@ -432,18 +461,21 @@ if (empty($selected_service)) {
                     originalContent = newContent;
                     originalHtml = htmlContent;
                     
-                    // Exit edit mode
-                    disableEdit();
+                    // Update status
+                    updateEditStatus();
                     
                     showStatus("✅ Description saved! Changes will be applied when creating the activity.", "success");
                 });
                 
-                // Cancel button click
+                // Cancel/Reset button click
                 cancelBtn.addEventListener("click", function() {
                     descriptionEditor.value = originalContent;
                     descriptionDisplay.innerHTML = originalHtml;
-                    disableEdit();
-                    showStatus("Changes cancelled", "info");
+                    updateEditStatus();
+                    if (isEditing) {
+                        disableEdit();
+                    }
+                    showStatus("Changes reset to original", "info");
                 });
                 
                 // Click anywhere in content area to edit
@@ -470,6 +502,9 @@ if (empty($selected_service)) {
                         this.style.borderColor = "#dee2e6";
                     }
                 });
+                
+                // Initialize the status
+                updateEditStatus();
             })();
             </script>';
 
