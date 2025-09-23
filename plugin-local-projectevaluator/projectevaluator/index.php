@@ -199,7 +199,206 @@ if ($mform->is_cancelled()) {
                 'filter' => true
             ));
             
+            
+             echo '<div style="display: none;">';
             echo $OUTPUT->box(get_string('generated_project', 'local_projectevaluator') . ':<br><br>' . $formatted_html);
+            echo '</div>';
+            // Inline editing functionality - edit directly in the description box
+            echo '<div style="margin: 20px 0; position: relative;">';
+            echo '<div style="background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 0; overflow: hidden;">';
+            
+            // Header with title and edit button
+            echo '<div style="background: #e9ecef; padding: 15px; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center;">';
+            echo '<h4 style="margin: 0; color: #495057;">📋 Generated Project Description - Review & Edit</h4>';
+            echo '<button id="edit-toggle-btn" class="btn btn-sm btn-outline-primary" style="font-size: 12px;">✏️ Edit</button>';
+            echo '</div>';
+            
+            // Content area that becomes editable
+            echo '<div id="description-content" style="padding: 20px; background: white; min-height: 200px; cursor: text; position: relative;" onclick="enableEdit()">';
+            echo '<div id="description-display">' . $formatted_html . '</div>';
+            echo '<textarea id="description-editor" style="display: none; width: 100%; height: 300px; border: none; resize: vertical; padding: 0; font-family: monospace; background: transparent; outline: none;">' . 
+                 htmlspecialchars($project_description, ENT_QUOTES, 'UTF-8') . '</textarea>';
+            echo '</div>';
+            
+            // Action buttons (hidden by default)
+            echo '<div id="edit-actions" style="display: none; background: #f8f9fa; padding: 15px; border-top: 1px solid #dee2e6; text-align: right;">';
+            echo '<button id="save-btn" class="btn btn-success btn-sm" style="margin-right: 10px;">💾 Save Changes</button>';
+            echo '<button id="cancel-btn" class="btn btn-outline-secondary btn-sm">❌ Cancel</button>';
+            echo '</div>';
+            
+            // Status message
+            echo '<div id="status-message" style="display: none; margin-top: 10px; padding: 10px; border-radius: 4px;"></div>';
+            echo '</div>';
+            echo '</div>';
+            
+            echo '<script>
+            (function() {
+                var editToggleBtn = document.getElementById("edit-toggle-btn");
+                var descriptionContent = document.getElementById("description-content");
+                var descriptionDisplay = document.getElementById("description-display");
+                var descriptionEditor = document.getElementById("description-editor");
+                var editActions = document.getElementById("edit-actions");
+                var saveBtn = document.getElementById("save-btn");
+                var cancelBtn = document.getElementById("cancel-btn");
+                var statusMessage = document.getElementById("status-message");
+                
+                var isEditing = false;
+                var originalContent = descriptionEditor.value;
+                var originalHtml = descriptionDisplay.innerHTML;
+                
+                // Simple markdown to HTML converter
+                function markdownToHtml(text) {
+                    var html = text
+                        .replace(/\n\n/g, "</p><p>")
+                        .replace(/\n/g, "<br>")
+                        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                        .replace(/\*(.*?)\*/g, "<em>$1</em>")
+                        .replace(/^# (.*$)/gim, "<h1>$1</h1>")
+                        .replace(/^## (.*$)/gim, "<h2>$1</h2>")
+                        .replace(/^### (.*$)/gim, "<h3>$1</h3>")
+                        .replace(/^#### (.*$)/gim, "<h4>$1</h4>")
+                        .replace(/`(.*?)`/g, "<code>$1</code>")
+                        .replace(/^- (.*$)/gim, "<li>$1</li>");
+                    
+                    // Wrap in paragraphs if not already formatted
+                    if (!html.includes("<h") && !html.includes("<ul") && !html.includes("<p>")) {
+                        html = "<p>" + html + "</p>";
+                    }
+                    
+                    // Fix lists
+                    html = html.replace(/(<li>.*?<\/li>)/gs, function(match) {
+                        return match.replace(/<br>/g, "");
+                    });
+                    html = html.replace(/(<li>.*<\/li>)/s, "<ul>$1</ul>");
+                    
+                    return html;
+                }
+                
+                function showStatus(message, type) {
+                    statusMessage.style.display = "block";
+                    statusMessage.textContent = message;
+                    statusMessage.className = type === "success" ? "alert alert-success" : 
+                                            type === "error" ? "alert alert-danger" : "alert alert-info";
+                    setTimeout(function() {
+                        statusMessage.style.display = "none";
+                    }, 3000);
+                }
+                
+                function enableEdit() {
+                    if (isEditing) return;
+                    
+                    isEditing = true;
+                    descriptionDisplay.style.display = "none";
+                    descriptionEditor.style.display = "block";
+                    editActions.style.display = "block";
+                    editToggleBtn.textContent = "👁️ Preview";
+                    editToggleBtn.className = "btn btn-sm btn-outline-info";
+                    descriptionContent.style.cursor = "default";
+                    
+                    // Focus the editor
+                    descriptionEditor.focus();
+                    
+                    // Auto-resize textarea
+                    descriptionEditor.style.height = "auto";
+                    descriptionEditor.style.height = descriptionEditor.scrollHeight + "px";
+                }
+                
+                function disableEdit() {
+                    isEditing = false;
+                    descriptionDisplay.style.display = "block";
+                    descriptionEditor.style.display = "none";
+                    editActions.style.display = "none";
+                    editToggleBtn.textContent = "✏️ Edit";
+                    editToggleBtn.className = "btn btn-sm btn-outline-primary";
+                    descriptionContent.style.cursor = "text";
+                }
+                
+                // Edit toggle button click
+                editToggleBtn.addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    if (isEditing) {
+                        // Show preview
+                        var currentText = descriptionEditor.value.trim();
+                        if (currentText) {
+                            var previewHtml = markdownToHtml(currentText);
+                            descriptionDisplay.innerHTML = previewHtml;
+                        }
+                        disableEdit();
+                    } else {
+                        enableEdit();
+                    }
+                });
+                
+                // Auto-resize textarea while typing
+                descriptionEditor.addEventListener("input", function() {
+                    this.style.height = "auto";
+                    this.style.height = this.scrollHeight + "px";
+                });
+                
+                // Save button click
+                saveBtn.addEventListener("click", function() {
+                    var newContent = descriptionEditor.value.trim();
+                    if (newContent === "") {
+                        showStatus("Description cannot be empty", "error");
+                        return;
+                    }
+                    
+                    // Convert to HTML
+                    var htmlContent = markdownToHtml(newContent);
+                    
+                    // Update the display
+                    descriptionDisplay.innerHTML = htmlContent;
+                    
+                    // Update the hidden form field
+                    var hiddenField = document.querySelector("input[name=\'project_description\']");
+                    if (hiddenField) {
+                        hiddenField.value = htmlContent;
+                    }
+                    
+                    // Store new content as original
+                    originalContent = newContent;
+                    originalHtml = htmlContent;
+                    
+                    // Exit edit mode
+                    disableEdit();
+                    
+                    showStatus("✅ Description saved! Changes will be applied when creating the activity.", "success");
+                });
+                
+                // Cancel button click
+                cancelBtn.addEventListener("click", function() {
+                    descriptionEditor.value = originalContent;
+                    descriptionDisplay.innerHTML = originalHtml;
+                    disableEdit();
+                    showStatus("Changes cancelled", "info");
+                });
+                
+                // Click anywhere in content area to edit
+                window.enableEdit = enableEdit;
+                
+                // Prevent clicks on display from bubbling when editing
+                descriptionDisplay.addEventListener("click", function(e) {
+                    if (!isEditing) {
+                        enableEdit();
+                    }
+                });
+                
+                // Add hover effect
+                descriptionContent.addEventListener("mouseenter", function() {
+                    if (!isEditing) {
+                        this.style.background = "#f8f9fa";
+                        this.style.borderColor = "#007bff";
+                    }
+                });
+                
+                descriptionContent.addEventListener("mouseleave", function() {
+                    if (!isEditing) {
+                        this.style.background = "white";
+                        this.style.borderColor = "#dee2e6";
+                    }
+                });
+            })();
+            </script>';
 
             // Pre-fill and display the activity form
             $form_data = new stdClass();

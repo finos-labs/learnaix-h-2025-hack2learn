@@ -13,3 +13,7 @@ $string['error_contacting_backend'] = 'Error contacting backend service.';
 $string['activity_title'] = 'Activity Title';
 $string['duedate'] = 'Due Date';
 $string['create_activity'] = 'Create Activity';
+$string['edit'] = 'Edit';
+$string['save'] = 'Save';
+$string['saved'] = 'Saved!';
+$string['error_saving'] = 'Error saving.';
