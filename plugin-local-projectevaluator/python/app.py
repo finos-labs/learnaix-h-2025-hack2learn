@@ -197,7 +197,7 @@ async def generate_project(request: ProjectRequest):
         
         sql = f"""
         SELECT SNOWFLAKE.CORTEX.COMPLETE(
-            'deeps',
+            'claude-3-5-sonnet',
             '{prompt}'
         ) as response
         """
