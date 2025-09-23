@@ -6,11 +6,11 @@ import uvicorn
 import os
 import base64
 import io
+import re
+import snowflake.connector
 from dotenv import load_dotenv
-from langchain_community.chat_models import ChatSnowflakeCortex
-from langchain_core.messages import HumanMessage, SystemMessage
 
-# For document processing
+# Document processing imports
 try:
     import PyPDF2
     PDF_AVAILABLE = True
@@ -23,18 +23,16 @@ try:
 except ImportError:
     DOCX_AVAILABLE = False
 
-# Load environment variables from .env file
 load_dotenv()
 
 app = FastAPI()
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[""],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=[""],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 class DocumentData(BaseModel):
@@ -47,103 +45,188 @@ class ProjectRequest(BaseModel):
     complexity: str
     documents: Optional[List[DocumentData]] = []
 
-
-def clean_and_limit_content(text: str, max_chars: int = 5000) -> str:
-    """Clean and limit document content to prevent SQL parsing issues"""
+def clean_text(text: str, max_chars: int = 50000) -> str:
+    """Clean text for Snowflake SQL compatibility"""
     if not text or not text.strip():
         return ""
     
-    # Remove problematic characters that might cause SQL issues
-    text = text.replace("'", "'").replace('"', '"').replace('"', '"')
-    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    # Remove control characters and normalize whitespace
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
+    text = re.sub(r'\s+', ' ', text)
+    text = text.strip()
     
-    # Remove excessive whitespace
-    import re
-    text = re.sub(r'\n\s*\n', '\n\n', text)  # Multiple newlines to double
-    text = re.sub(r'[ \t]+', ' ', text)       # Multiple spaces/tabs to single space
-    
-    # Truncate if too long and add indication
+    # Truncate if too long
     if len(text) > max_chars:
-        text = text[:max_chars] + "\n\n[Content truncated for processing...]"
+        truncate_pos = text.rfind('.', 0, max_chars - 50)
+        if truncate_pos == -1:
+            truncate_pos = max_chars - 50
+        text = text[:truncate_pos] + " [Content truncated...]"
     
-    return text.strip()
+    # Escape single quotes for SQL
+    return text.replace("'", "''")
 
-def extract_document_content(doc: DocumentData) -> str:
-    """Extract text content from uploaded documents"""
+def extract_document_text(doc: DocumentData) -> str:
+    """Extract and clean text from document"""
     try:
-        raw_content = ""
+        raw_text = ""
         
         if doc.type == 'txt':
-            raw_content = doc.content
+            if isinstance(doc.content, str):
+                try:
+                    raw_text = base64.b64decode(doc.content).decode('utf-8', errors='ignore')
+                except:
+                    raw_text = doc.content
+            else:
+                raw_text = str(doc.content)
         
         elif doc.type == 'pdf' and PDF_AVAILABLE:
-            # Decode base64 content
             pdf_content = base64.b64decode(doc.content)
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_content))
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
-            raw_content = text
+            raw_text = "\n".join(page.extract_text() for page in pdf_reader.pages if page.extract_text())
         
         elif doc.type in ['doc', 'docx'] and DOCX_AVAILABLE:
-            # Decode base64 content
             doc_content = base64.b64decode(doc.content)
             document = docx.Document(io.BytesIO(doc_content))
-            text = ""
-            for paragraph in document.paragraphs:
-                text += paragraph.text + "\n"
-            raw_content = text
+            raw_text = "\n".join(p.text for p in document.paragraphs if p.text.strip())
         
-        else:
-            # Fallback: try to decode as text
-            try:
-                raw_content = base64.b64decode(doc.content).decode('utf-8', errors='ignore')
-            except:
-                return f"[Could not extract content from {doc.filename}]"
-        
-        # Clean and limit the content
-        return clean_and_limit_content(raw_content)
+        return clean_text(raw_text) if raw_text else f"[Could not extract text from {doc.filename}]"
     
     except Exception as e:
-        print(f"Error extracting content from {doc.filename}: {e}")
+        print(f"Error processing {doc.filename}: {e}")
         return f"[Error processing {doc.filename}]"
-    
 
+
+def build_prompt(topics: str, complexity: str, documents: Optional[List[DocumentData]] = []) -> str:
+    """
+    Builds a complete and robust prompt for generating a course project.
+    
+    This version uses a detailed instructional design template to give the AI
+    clear context, roles, and output requirements for better results.
+    """
+    
+    prompt_parts = [
+        "**Role:** You are an expert instructional designer and curriculum developer. Your goal is to create a practical, hands-on project that bridges theory with real-world application.",
+        "",
+        "**Task:** Generate a comprehensive project problem statement based on the provided topics and reference materials. The project must be well-structured, clear, and ready for an instructor to review.",
+        "",
+        "**Primary Inputs:**",
+        f"- **Topic(s):** {topics}",
+        f"- **Project Complexity:** {complexity}",
+        "",
+        "**Complexity Definitions:**",
+        "- **Easy:** Focuses on core concepts, requires minimal external research, and has a straightforward solution.",
+        "- **Medium:** Integrates multiple concepts, involves some independent problem-solving, and results in a more comprehensive application.",
+        "- **Hard:** Challenges the learner to apply concepts in novel ways, may require external research, and solves a multi-faceted problem.",
+        "",
+        "---",
+        "**PROJECT DETAILS TO GENERATE**",
+        "---",
+        "**Project Title:**",
+        "[Create a concise and engaging title]",
+        "",
+        "**1. Project Objective:**",
+        "[Provide a 1-2 sentence summary of the project's main goal and its relevance to the course.]",
+        "",
+        "**2. Expected Features & Functionalities:**",
+        "[Use a bulleted list to detail specific features. This must align with the specified complexity.]",
+        "",
+        "**3. Constraints & Technical Requirements:**",
+        "[List any rules or specific technologies (e.g., 'Must use Python 3.8+', 'Use only the Pandas and Matplotlib libraries').]",
+        "",
+        "**4. Success Criteria:**",
+        "[Define a clear, objective checklist to evaluate completion (e.g., 'All features are functional', 'Code is well-commented').]",
+        "",
+        "**5. Estimated Timeline:**",
+        "[Suggest a realistic timeline with key milestones (e.g., 'Week 1: Data cleaning', 'Week 2: Analysis & Visualization').]",
+    ]
+    
+    if documents:
+        doc_header = [
+            "**REFERENCE COURSE CONTENT:**",
+            "========================================",
+            "Analyze the following course materials to ensure the project is perfectly aligned with the learning objectives.",
+            ""
+        ]
+        
+        doc_body = []
+        for i, doc in enumerate(documents, 1):
+            doc_text = extract_document_text(doc)
+            if "[Could not extract" not in doc_text and "[Error processing" not in doc_text:
+                doc_body.append(f"**Document {i}: {doc.filename}**")
+                doc_body.append(doc_text)
+                doc_body.append("")
+
+        doc_footer = [
+            "========================================",
+            ""
+        ]
+        
+        if doc_body:
+            prompt_parts = doc_header + doc_body + doc_footer + prompt_parts
+
+    full_prompt = "\n".join(prompt_parts)
+    
+    # THIS IS THE FIX: Clean the entire final prompt for SQL compatibility.
+    # This ensures any special characters in the template text are also handled.
+    return clean_text(full_prompt)
+
+def get_snowflake_connection():
+    """Create Snowflake connection"""
+    return snowflake.connector.connect(
+        account=os.getenv("SNOWFLAKE_ACCOUNT"),
+        user=os.getenv("SNOWFLAKE_USER"), 
+        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        database=os.getenv("SNOWFLAKE_DATABASE"),
+        schema=os.getenv("SNOWFLAKE_SCHEMA"),
+        role=os.getenv("SNOWFLAKE_ROLE"),
+        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+    )
 
 @app.post("/generate-project/")
 async def generate_project(request: ProjectRequest):
     try:
-        chat = ChatSnowflakeCortex(
-            model="claude-3-5-sonnet",  # Using deepseek-r1 as it was working in the earlier example
-            cortex_function="complete",
-            temperature=0,
-            top_p=0.95,
-            snowflake_account=os.getenv("SNOWFLAKE_ACCOUNT"),
-            snowflake_username=os.getenv("SNOWFLAKE_USER"),
-            snowflake_password=os.getenv("SNOWFLAKE_PASSWORD"),
-            snowflake_database=os.getenv("SNOWFLAKE_DATABASE"),
-            snowflake_schema=os.getenv("SNOWFLAKE_SCHEMA"),
-            snowflake_role=os.getenv("SNOWFLAKE_ROLE"),
-            snowflake_warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
-        )
-
-        print(request.documents)
-
-        # Create a simple, escaped prompt
-        prompt = f"Create a {request.complexity.lower()} level project about {request.topics}. Include the following sections: 1) Project Objective 2) Expected Features 3) Success Criteria 4) Technical Requirements 5) Timeline"
-
-        messages = [
-            SystemMessage(content="You are an experienced educator creating project assignments."),
-            HumanMessage(content=prompt)
-        ]
-
-        response = chat.invoke(messages)
-
-        return {"project_description": response.content}
+        print(f"Processing: {request.topics} ({request.complexity}) with {len(request.documents)} documents")
+        
+        # Build prompt
+        prompt = build_prompt(request.topics, request.complexity, request.documents)
+        print(f"Prompt length: {len(prompt)} characters")
+        
+        # Execute Snowflake Cortex query
+        conn = get_snowflake_connection()
+        cursor = conn.cursor()
+        
+        sql = f"""
+        SELECT SNOWFLAKE.CORTEX.COMPLETE(
+            'deeps',
+            '{prompt}'
+        ) as response
+        """
+        
+        cursor.execute(sql)
+        result = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        if result and result[0]:
+            return {
+                "project_description": result[0],
+                "documents_processed": len(request.documents),
+                "document_names": [doc.filename for doc in request.documents]
+            }
+        else:
+            return {"error": "No response from Snowflake Cortex"}
+            
     except Exception as e:
-        error_msg = str(e)
-        print(f"Error details: {error_msg}")  # For debugging
-        return {"error": f"Failed to generate project: {error_msg}"}
+        print(f"Error: {e}")
+        return {
+            "error": f"Failed to generate project: {str(e)}",
+            "documents_processed": len(request.documents)
+        }
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)
