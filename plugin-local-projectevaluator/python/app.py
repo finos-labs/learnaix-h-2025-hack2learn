@@ -12,6 +12,10 @@ import snowflake.connector
 import zipfile
 import json # <-- Added for JSON parsing
 
+import tarfile
+import io
+
+
 
 from dotenv import load_dotenv
 
@@ -155,6 +159,37 @@ def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
 
     return "\n".join(formatted_parts)
 
+def format_tar_contents_for_llm(tar_bytes: bytes) -> str:
+    """
+    Reads a tar (or tar.gz) file as bytes and formats its text-based contents into a single string
+    suitable for an LLM prompt.
+    """
+    formatted_parts = []
+    skipped_files = []
+
+    tar_file_in_memory = io.BytesIO(tar_bytes)
+    with tarfile.open(fileobj=tar_file_in_memory) as tar:
+        for member in tar.getmembers():
+            # Skip directories and common metadata/cache files
+            if member.isdir() or member.name.endswith('.DS_Store') or '__pycache__' in member.name:
+                continue
+            try:
+                file_obj = tar.extractfile(member)
+                if file_obj is None:
+                    skipped_files.append(member.name)
+                    continue
+                content_bytes = file_obj.read()
+                content_str = content_bytes.decode('utf-8')
+                formatted_parts.append(f"--- FILE: {member.name} ---")
+                formatted_parts.append(content_str)
+                formatted_parts.append("--- END FILE ---\n")
+            except UnicodeDecodeError:
+                skipped_files.append(member.name)
+            except Exception as e:
+                skipped_files.append(member.name)
+    if skipped_files:
+        formatted_parts.append(f"NOTE: The following binary or unreadable files were skipped: {', '.join(skipped_files)}")
+    return "\n".join(formatted_parts)
 
 # =============================================================================
 # PROMPT BUILDERS
@@ -335,21 +370,23 @@ async def evaluate_project(criteria: str = Form(...), file: UploadFile = File(..
     Returns a structured JSON evaluation.
     """
     # 1. Validate input file
-    if not file.filename.endswith('.zip'):
-        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a .zip file.")
+    if not (file.filename.endswith('.zip') or file.filename.endswith('.tar') or file.filename.endswith('.tar.gz')):
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a .zip or .tar(.gz) file.")
 
     try:
         print(f"Evaluating submission: {file.filename}")
 
         # 2. Read and process the ZIP file in memory
-        zip_content_bytes = await file.read()
-        zip_file_in_memory = io.BytesIO(zip_content_bytes)
+        formatted_code = ""
+        content_bytes = await file.read()
+        if file.filename.endswith('.zip'):
+            with zipfile.ZipFile(io.BytesIO(content_bytes), 'r') as zip_ref:
+                formatted_code = format_zip_contents_for_llm(zip_ref)
+        else:  # .tar or .tar.gz
+            formatted_code = format_tar_contents_for_llm(content_bytes)
         
-        with zipfile.ZipFile(zip_file_in_memory, 'r') as zip_ref:
-            formatted_code = format_zip_contents_for_llm(zip_ref)
-
         if not formatted_code.strip():
-            raise HTTPException(status_code=400, detail="The zip file seems to be empty or contains no readable text files.")
+            raise HTTPException(status_code=400, detail="Archive is empty or contains no readable text files.")
 
         # 3. Build the evaluation prompt
         prompt = build_evaluation_prompt(criteria, formatted_code)
