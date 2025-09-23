@@ -35,13 +35,13 @@ function display_service_selection() {
     echo '<p style="margin-bottom: 20px; opacity: 0.9; line-height: 1.5;">' . get_string('service_description_generator', 'local_projectevaluator') . '</p>';
     echo '<div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 25px; display: inline-block; font-weight: bold;">Get Started →</div>';
     echo '</div>';
-    
+
     // Project Evaluator AI Service  
     echo '<div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 15px; padding: 25px; color: white; text-align: center; cursor: pointer; transition: transform 0.3s ease, box-shadow 0.3s ease;" onclick="selectService(\'evaluator\')" onmouseover="this.style.transform=\'scale(1.05)\'; this.style.boxShadow=\'0 10px 25px rgba(240, 147, 251, 0.3)\'" onmouseout="this.style.transform=\'scale(1)\'; this.style.boxShadow=\'none\'">';
     echo '<div style="font-size: 48px; margin-bottom: 15px;">🎯</div>';
     echo '<h3 style="margin-bottom: 15px; font-size: 22px;">' . get_string('project_evaluator', 'local_projectevaluator') . '</h3>';
     echo '<p style="margin-bottom: 20px; opacity: 0.9; line-height: 1.5;">' . get_string('service_description_evaluator', 'local_projectevaluator') . '</p>';
-    echo '<div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 25px; display: inline-block; font-weight: bold;">Coming Soon →</div>';
+    echo '<div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 25px; display: inline-block; font-weight: bold;">Get Started →</div>';
     echo '</div>';
     
     echo '</div>';
@@ -49,10 +49,6 @@ function display_service_selection() {
     
     echo '<script>
     function selectService(service) {
-        if (service === "evaluator") {
-            alert("🚧 AI-based Project Evaluator is coming soon! Stay tuned for this exciting feature.");
-            return;
-        }
         window.location.href = "' . $CFG->wwwroot . '/local/projectevaluator/index.php?service=" + service;
     }
     </script>';
@@ -667,28 +663,433 @@ if (empty($selected_service)) {
         exit;
     }
 } else if ($selected_service === 'evaluator') {
-    // Project Evaluator AI service (placeholder for future implementation)
+    // Project Evaluator AI service - show courses dropdown/list
     echo $OUTPUT->header();
     display_service_breadcrumb(get_string('project_evaluator', 'local_projectevaluator'));
-    
-    echo '<div style="text-align: center; padding: 60px 20px; max-width: 600px; margin: 0 auto;">';
-    echo '<div style="font-size: 72px; margin-bottom: 20px;">🚧</div>';
-    echo '<h2 style="color: #2d3748; margin-bottom: 15px;">AI-based Project Evaluator</h2>';
-    echo '<p style="color: #718096; font-size: 18px; line-height: 1.6; margin-bottom: 30px;">This exciting feature is currently under development. It will provide AI-powered project evaluation, assessment, and feedback capabilities.</p>';
-    echo '<div style="background: #f7fafc; border: 2px dashed #cbd5e0; border-radius: 10px; padding: 20px; margin: 20px 0;">';
-    echo '<h4 style="color: #4a5568; margin-bottom: 10px;">🔮 Coming Soon Features:</h4>';
-    echo '<ul style="text-align: left; color: #718096; line-height: 1.8;">';
-    echo '<li>Automated project assessment and scoring</li>';
-    echo '<li>Detailed feedback and improvement suggestions</li>';
-    echo '<li>Code quality analysis and recommendations</li>';
-    echo '<li>Plagiarism detection and originality checking</li>';
-    echo '<li>Learning outcome achievement tracking</li>';
-    echo '</ul>';
+
+    // Get all courses the user can access
+    require_once($CFG->dirroot . '/lib/enrollib.php');
+    $all_courses = enrol_get_my_courses();
+
+    if (empty($all_courses)) {
+        echo '<div style="text-align:center; margin-top:40px;">';
+        echo '<h3>No courses available</h3>';
+        echo '<a href="' . $CFG->wwwroot . '/local/projectevaluator/index.php" class="btn btn-primary">← Back to Services</a>';
+        echo '</div>';
+        echo $OUTPUT->footer();
+        exit;
+    }
+
+    // Handle course selection
+    $selected_courseid = optional_param('courseid', '', PARAM_INT);
+
+    if (empty($selected_courseid)) {
+        // Show courses dropdown
+        echo '<div style="max-width: 500px; margin: 40px auto; padding: 30px; background: #f7fafc; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">';
+        echo '<h3 style="margin-bottom: 25px; color: #2d3748;">Select a Course to Evaluate</h3>';
+        echo '<form method="get" action="">';
+        echo '<input type="hidden" name="service" value="evaluator">';
+        echo '<select name="courseid" style="width:100%; padding:10px; font-size:16px; border-radius:6px; margin-bottom:20px;" required>';
+        echo '<option value="" disabled selected>Select a course...</option>';
+        foreach ($all_courses as $course) {
+            $context = context_course::instance($course->id);
+            if (has_capability('moodle/course:manageactivities', $context)) {
+                echo '<option value="' . $course->id . '">' . format_string($course->fullname) . '</option>';
+            }
+        }
+        echo '</select>';
+        echo '<button type="submit" class="btn btn-primary" style="width:100%; padding:10px; font-size:16px;">Continue →</button>';
+        echo '</form>';
+        echo '</div>';
+        echo $OUTPUT->footer();
+        exit;
+    }
+
+    // Show activities for selected course or submissions for selected activity
+    $activityid = optional_param('activityid', '', PARAM_INT);
+    $course = $all_courses[$selected_courseid];
+    $context = context_course::instance($course->id);
+    require_once($CFG->dirroot . '/lib/modinfolib.php');
+    $modinfo = get_fast_modinfo($course->id);
+    $activities = [];
+    foreach ($modinfo->get_cms() as $cm) {
+        if ($cm->uservisible && $cm->modname === 'assign') {
+            $activities[] = $cm;
+        }
+    }
+
+    if (empty($activityid)) {
+        // Show activities list
+        echo '<div style="max-width: 700px; margin: 40px auto; padding: 30px; background: #f7fafc; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">';
+        echo '<h3 style="margin-bottom: 25px; color: #2d3748;">Course Selected: ' . format_string($course->fullname) . '</h3>';
+        if (empty($activities)) {
+            echo '<p>No assignments found in this course.</p>';
+        } else {
+            echo '<h4 style="margin-bottom: 15px; color: #4a5568;">Select an Assignment to Evaluate</h4>';
+            echo '<ul style="list-style:none; padding:0;">';
+            foreach ($activities as $cm) {
+                echo '<li style="margin-bottom: 15px;">';
+                echo '<form method="get" action="" style="display:inline;">';
+                echo '<input type="hidden" name="service" value="evaluator">';
+                echo '<input type="hidden" name="courseid" value="' . $course->id . '">';
+                echo '<input type="hidden" name="activityid" value="' . $cm->id . '">';
+                echo '<button type="submit" class="btn btn-outline-primary" style="font-size:16px;">' . format_string($cm->name) . '</button>';
+                echo '</form>';
+                echo '</li>';
+            }
+            echo '</ul>';
+        }
+        echo '<a href="' . $CFG->wwwroot . '/local/projectevaluator/index.php?service=evaluator" class="btn btn-secondary" style="margin-top:20px;">← Back to Courses</a>';
+        echo '</div>';
+        echo $OUTPUT->footer();
+        exit;
+    }
+
+    // Show submissions for selected activity
+    $selected_activity = null;
+    foreach ($activities as $cm) {
+        if ($cm->id == $activityid) {
+            $selected_activity = $cm;
+            break;
+        }
+    }
+    if (!$selected_activity) {
+        echo $OUTPUT->notification('Activity not found', 'error');
+        echo $OUTPUT->continue_button(new moodle_url('/local/projectevaluator/index.php?service=evaluator&courseid=' . $course->id));
+        echo $OUTPUT->footer();
+        exit;
+    }
+
+    // Get assignment submissions
+    require_once($CFG->dirroot . '/mod/assign/locallib.php');
+    $assign = new assign(context_module::instance($selected_activity->id), false, false);
+    // Show all submissions for the selected activity (no status filter)
+    $submissions = $assign->get_all_submissions(0);
+
+    $submissionid = optional_param('submissionid', '', PARAM_INT);
+    if (empty($submissionid)) {
+        echo '<div style="max-width: 800px; margin: 40px auto; padding: 30px; background: #f7fafc; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">';
+        echo '<h3 style="margin-bottom: 25px; color: #2d3748;">Assignment: ' . format_string($selected_activity->name) . '</h3>';
+            if (empty($submissions)) {
+                echo '<p>No submitted assignments found for grading.</p>';
+            } else {
+                echo '<h4 style="margin-bottom: 15px; color: #4a5568;">Student Submissions (Submitted)</h4>';
+                echo '<ul style="list-style:none; padding:0;">';
+                foreach ($submissions as $submission) {
+                    $userid = $submission->userid;
+                    $user = $DB->get_record('user', array('id' => $userid));
+                    $displayname = fullname($user);
+                        // Fetch feedback from both assignfeedback_comments and assign_grades
+                        $feedback = '';
+                        
+                        // First try assignfeedback_comments
+                        try {
+                            $comment = $DB->get_record('assignfeedback_comments', array('submission' => $submission->id));
+                            if ($comment && !empty($comment->commenttext)) {
+                                $feedback = $comment->commenttext;
+                            }
+                        } catch (Exception $e) {
+                            // Table might not exist; continue to next source
+                        }
+                        
+                        // If no feedback found, check assign_grades
+                        if (empty($feedback)) {
+                            $grade_record = $DB->get_record('assign_grades', 
+                                array('assignment' => $selected_activity->id, 'userid' => $userid));
+                            if ($grade_record && !empty($grade_record->feedbacktext)) {
+                                $feedback = $grade_record->feedbacktext;
+                            }
+                        }
+                    echo '<li style="margin-bottom: 15px;">';
+                    echo '<form method="get" action="" style="display:inline;">';
+                    echo '<input type="hidden" name="service" value="evaluator">';
+                    echo '<input type="hidden" name="courseid" value="' . $course->id . '">';
+                    echo '<input type="hidden" name="activityid" value="' . $selected_activity->id . '">';
+                    echo '<input type="hidden" name="submissionid" value="' . $submission->id . '">';
+                    echo '<button type="submit" class="btn btn-outline-success" style="font-size:16px;">' . $displayname . ' (ID: ' . $userid . ')</button>';
+                    echo '</form>';
+                        // Show feedback if available
+                        if (!empty($feedback)) {
+                            echo '<div style="margin-top:8px; margin-left:10px; padding:8px; background:#f1f5f9; border-radius:6px; color:#4a5568; font-size:14px;">'
+                                . '<strong>Feedback:</strong> ' . htmlspecialchars($feedback) . '</div>';
+                        }
+                    echo '</li>';
+                }
+                echo '</ul>';
+            }
+        echo '<a href="' . $CFG->wwwroot . '/local/projectevaluator/index.php?service=evaluator&courseid=' . $course->id . '" class="btn btn-secondary" style="margin-top:20px;">← Back to Activities</a>';
+        echo '</div>';
+        echo $OUTPUT->footer();
+        exit;
+    }
+
+    // Handle grade submission
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['grade']) && isset($_POST['feedback'])) {
+        $grade_value = floatval($_POST['grade']);
+        $feedback_text = trim($_POST['feedback']);
+        $submission = $DB->get_record('assign_submission', array('id' => $submissionid));
+        $userid = $submission->userid;
+        $user = $DB->get_record('user', array('id' => $userid));
+        $displayname = fullname($user);
+        $assignmentid = $assign->get_instance()->id;
+
+        // Check if grade record exists
+        $grade_record = $DB->get_record('assign_grades', array('assignment' => $assignmentid, 'userid' => $userid));
+        if ($grade_record) {
+            // Update existing grade
+            $grade_record->grade = $grade_value;
+            $grade_record->feedbacktext = $feedback_text;
+            $grade_record->timemodified = time();
+            $DB->update_record('assign_grades', $grade_record);
+        } else {
+            // Insert new grade
+            $new_grade = new stdClass();
+            $new_grade->assignment = $assignmentid;
+            $new_grade->userid = $userid;
+            $new_grade->grade = $grade_value;
+            $new_grade->feedbacktext = $feedback_text;
+            $new_grade->timemodified = time();
+            $DB->insert_record('assign_grades', $new_grade);
+        }
+
+        // Also upsert assignfeedback_comments so feedback is visible/stored in the assignment feedback plugin
+        try {
+            global $USER;
+            $comment_record = $DB->get_record('assignfeedback_comments', array('submission' => $submissionid));
+            if ($comment_record) {
+                $comment_record->commenttext = $feedback_text;
+                if (defined('FORMAT_HTML')) {
+                    $comment_record->commentformat = FORMAT_HTML;
+                }
+                $comment_record->timemodified = time();
+                $comment_record->grader = isset($USER->id) ? $USER->id : 0;
+                $DB->update_record('assignfeedback_comments', $comment_record);
+            } else {
+                $newc = new stdClass();
+                $newc->assignment = $assignmentid;
+                $newc->submission = $submissionid;
+                $newc->userid = $userid;
+                $newc->grader = isset($USER->id) ? $USER->id : 0;
+                $newc->commenttext = $feedback_text;
+                if (defined('FORMAT_HTML')) {
+                    $newc->commentformat = FORMAT_HTML;
+                }
+                $newc->timemodified = time();
+                $DB->insert_record('assignfeedback_comments', $newc);
+            }
+        } catch (Exception $e) {
+            // Ignore if comments plugin/table not present or DB error
+        }
+
+    // Show success message and redirect back to submissions
+    echo '<div style="max-width: 700px; margin: 40px auto; padding: 30px; background: #e6fffa; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">';
+    echo '<h3 style="color: #2c7a7b;">Grade saved for ' . $displayname . '!</h3>';
+    echo '<a href="' . $CFG->wwwroot . '/local/projectevaluator/index.php?service=evaluator&courseid=' . $course->id . '&activityid=' . $selected_activity->id . '" class="btn btn-primary" style="margin-top:20px;">← Back to Submissions</a>';
     echo '</div>';
-    echo '<a href="' . $CFG->wwwroot . '/local/projectevaluator/index.php" class="btn btn-primary">← Back to Services</a>';
+    exit;
+    }
+
+    // Show grading interface for selected submission
+    $submission = $DB->get_record('assign_submission', array('id' => $submissionid));
+    $userid = $submission->userid;
+    $user = $DB->get_record('user', array('id' => $userid));
+    $displayname = fullname($user);
+    $grade_record = $DB->get_record('assign_grades', array('assignment' => $assign->get_instance()->id, 'userid' => $userid));
+    $grade = $grade_record ? $grade_record->grade : '';
+    
+    // Initialize feedback variable
+    $feedback = '';
+    
+    // First try to get feedback from assignfeedback_comments as it's submission-specific
+    try {
+        $comment = $DB->get_record('assignfeedback_comments', array('submission' => $submissionid));
+        if ($comment && !empty($comment->commenttext)) {
+            $feedback = $comment->commenttext;
+        }
+    } catch (Exception $e) {
+        // Table might not exist, continue to next source
+    }
+    
+    // If no feedback in comments, check assign_grades table
+    if (empty($feedback) && $grade_record && !empty($grade_record->feedbacktext)) {
+        $feedback = $grade_record->feedbacktext;
+    }
+    
+    // Ensure feedback is never null
+    if ($feedback === null) {
+        $feedback = '';
+    }
+
+    // Try to extract onlinetext submission if available (fallbacks if not)
+    $submission_text = '';
+    $onlinetext = $DB->get_record('assignsubmission_onlinetext', array('submission' => $submissionid), 'onlinetext');
+    if ($onlinetext && !empty($onlinetext->onlinetext)) {
+        $submission_text = $onlinetext->onlinetext;
+    } else if (!empty($submission->data1)) {
+        $submission_text = $submission->data1;
+    } else if (!empty($submission->data)) {
+        $submission_text = $submission->data;
+    }
+
+    echo '<div style="max-width: 900px; margin: 40px auto; padding: 30px; background: #f7fafc; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">';
+    echo '<h3 style="margin-bottom: 25px; color: #2d3748;">Grading Submission for: ' . $displayname . ' (ID: ' . $userid . ')</h3>';
+    echo '<form method="post" action="">';
+    echo '<input type="hidden" name="service" value="evaluator">';
+    echo '<input type="hidden" name="courseid" value="' . $course->id . '">';
+    echo '<input type="hidden" name="activityid" value="' . $selected_activity->id . '">';
+    echo '<input type="hidden" name="submissionid" value="' . $submissionid . '">';
+    echo '<div style="margin-bottom: 25px;">';
+    echo '<label for="grade" style="font-weight:600;">Grade out of 100</label><br>';
+    echo '<input type="number" name="grade" id="grade" min="0" max="100" value="' . htmlspecialchars($grade) . '" style="width:120px; padding:8px; font-size:16px; margin-top:8px;">';
     echo '</div>';
-    
-    
+    echo '<div style="margin-bottom: 25px;">';
+    echo '<label for="feedback" style="font-weight:600;">Feedback comments</label><br>';
+    echo '<textarea name="feedback" id="feedback" rows="6" style="width:100%; padding:10px; font-size:16px; border-radius:6px;">' . htmlspecialchars($feedback) . '</textarea>';
+    echo '</div>';
+    echo '<button type="submit" class="btn btn-success" style="font-size:16px;">Save Grade</button>';
+    echo ' <button type="button" id="suggest-grade-btn" class="btn btn-outline-info" style="font-size:16px; margin-left:10px;">Suggest Grade</button>';
+    echo '<a href="' . $CFG->wwwroot . '/local/projectevaluator/index.php?service=evaluator&courseid=' . $course->id . '&activityid=' . $selected_activity->id . '" class="btn btn-secondary" style="margin-left:20px; font-size:16px;">← Back to Submissions</a>';
+    echo '</form>';
+    echo '</div>';
+    // Inject submission text into a JS variable for frontend evaluation API call
+    $safe_text = json_encode($submission_text);
+    $sesskey = sesskey();
+    $safe_sess = json_encode($sesskey);
+    $safe_activityid = json_encode($selected_activity->id);
+    $safe_submissionid = json_encode($submissionid);
+    echo '<script>var _pe_submission_text = ' . $safe_text . '; var _pe_sesskey = ' . $safe_sess . '; var _pe_activityid = ' . $safe_activityid . '; var _pe_submissionid = ' . $safe_submissionid . ';</script>';
+
+    // JavaScript to call the backend evaluation endpoint and populate fields
+    echo <<<'JS'
+<script>
+(function(){
+    // Add auto-save functionality for feedback
+    var feedbackInput = document.getElementById('feedback');
+    var gradeInput = document.getElementById('grade');
+    if (feedbackInput) {
+        var saveTimeout;
+        var lastSavedValue = feedbackInput.value;
+        
+        // Function to save feedback
+        function autoSaveFeedback() {
+            var currentValue = feedbackInput.value;
+            if (currentValue === lastSavedValue) return; // Don't save if unchanged
+            
+            lastSavedValue = currentValue;
+            fetch('save_grade_ajax.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sesskey: _pe_sesskey,
+                    submissionid: _pe_submissionid,
+                    activityid: _pe_activityid,
+                    grade: gradeInput.value || null,
+                    feedback: currentValue || null
+                })
+            }).then(function(resp) {
+                return resp.json();
+            }).then(function(data) {
+                if (data.status === 'ok') {
+                    // Optional: Show a subtle "Saved" indicator
+                    var savedIndicator = document.createElement('div');
+                    savedIndicator.textContent = '✓ Auto-saved';
+                    savedIndicator.style.color = '#68D391';
+                    savedIndicator.style.fontSize = '12px';
+                    savedIndicator.style.position = 'absolute';
+                    savedIndicator.style.marginTop = '5px';
+                    feedbackInput.parentNode.appendChild(savedIndicator);
+                    setTimeout(function() {
+                        savedIndicator.remove();
+                    }, 2000);
+                }
+            }).catch(function(error) {
+                console.error('Auto-save failed:', error);
+            });
+        }
+
+        // Add input event listener with debouncing
+        feedbackInput.addEventListener('input', function() {
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(autoSaveFeedback, 1000); // Wait 1 second after typing stops
+        });
+    }
+
+    var btn = document.getElementById("suggest-grade-btn");
+    if (!btn) return;
+    btn.addEventListener("click", function(){
+        try {
+            btn.disabled = true;
+            btn.textContent = "Suggesting...";
+            var text = _pe_submission_text || "";
+            if (!text || text.trim().length === 0) {
+                alert("No online text found for this submission to evaluate.");
+                btn.disabled = false;
+                btn.textContent = "Suggest Grade";
+                return;
+            }
+
+            fetch("http://localhost:8001/evaluate-submission/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: text, max_grade: 100 })
+            }).then(function(resp){ return resp.json(); })
+            .then(function(data){
+                if (data && data.grade !== undefined) {
+                    var gradeInput = document.getElementById('grade');
+                    var feedbackInput = document.getElementById('feedback');
+                    var suggestedGrade = Math.round(data.grade);
+                    var suggestedFeedback = data.feedback || '';
+                    if (gradeInput) gradeInput.value = suggestedGrade;
+                    if (feedbackInput) feedbackInput.value = suggestedFeedback;
+
+                    // Persist suggested grade & feedback via AJAX to our plugin endpoint
+                    try {
+                        fetch('save_grade_ajax.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                sesskey: _pe_sesskey,
+                                submissionid: _pe_submissionid,
+                                activityid: _pe_activityid,
+                                grade: suggestedGrade,
+                                feedback: suggestedFeedback
+                            })
+                        }).then(function(resp){ return resp.json(); })
+                        .then(function(saveResp){
+                            if (saveResp && saveResp.status === 'ok') {
+                                console.log('Saved suggested grade successfully');
+                            } else {
+                                console.warn('Failed to save suggested grade', saveResp);
+                            }
+                        }).catch(function(err){
+                            console.error('Save request failed', err);
+                        });
+                    } catch (err) {
+                        console.error('Error when saving suggested grade', err);
+                    }
+
+                } else if (data && data.error) {
+                    alert('Evaluation error: ' + data.error);
+                } else {
+                    alert('Unexpected response from evaluation service');
+                }
+            }).catch(function(err){
+                console.error(err);
+                alert('Failed to contact evaluation service: ' + err);
+            }).finally(function(){
+                btn.disabled = false;
+                btn.textContent = 'Suggest Grade';
+            });
+        } catch (e) {
+            console.error(e);
+            alert('Error while suggesting grade');
+            btn.disabled = false;
+            btn.textContent = 'Suggest Grade';
+        }
+    });
+})();
+</script>
+JS;
     echo $OUTPUT->footer();
     exit;
 }

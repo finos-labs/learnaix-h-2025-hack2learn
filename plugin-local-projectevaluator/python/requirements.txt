@@ -77,3 +77,4 @@ uvicorn==0.36.0
 wheel==0.45.1
 yarl==1.20.1
 zstandard==0.25.0
+python-multipart==0.0.6
