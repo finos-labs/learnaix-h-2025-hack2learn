@@ -799,7 +799,7 @@ $total_enrolled = $DB->get_field_sql($enrolled_sql, [$assignment->course]);
                                         <div class="stat-desc">Grade</div>
                                     </div>
                                     <div class="stat-item">
-                                        <div class="stat-value"><?php echo ucfirst($submission->status); ?></div>
+                                        <div class="stat-value"><?php echo $submission->grade !== null ? 'Graded' : 'Submitted'; ?></div>
                                         <div class="stat-desc">Status</div>
                                     </div>
                                 </div>

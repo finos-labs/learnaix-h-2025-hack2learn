@@ -32,16 +32,30 @@ $teacher_courses = [];
 foreach ($all_courses as $course) {
     $context = context_course::instance($course->id);
     if (has_capability('moodle/course:manageactivities', $context)) {
-        // Get course statistics
+        // Get course statistics with all enrolled students
         $sql = "SELECT COUNT(DISTINCT cm.id) as activity_count,
-                       COUNT(DISTINCT s.id) as submission_count,
-                       COUNT(DISTINCT s.userid) as student_count
+                       COUNT(DISTINCT s.id) as submission_count
                 FROM {course_modules} cm
                 LEFT JOIN {assign} a ON cm.instance = a.id AND cm.module = (SELECT id FROM {modules} WHERE name = 'assign')
-                LEFT JOIN {assign_submission} s ON a.id = s.assignment
+                LEFT JOIN {assign_submission} s ON a.id = s.assignment AND s.status = 'submitted'
                 WHERE cm.course = ? AND cm.module = (SELECT id FROM {modules} WHERE name = 'assign')";
         
+        // Get all enrolled students in this course (excluding teachers and managers)
+        $student_sql = "SELECT COUNT(DISTINCT ue.userid) as student_count
+                        FROM {user_enrolments} ue
+                        JOIN {enrol} e ON ue.enrolid = e.id
+                        JOIN {context} ctx ON ctx.instanceid = e.courseid AND ctx.contextlevel = 50
+                        JOIN {role_assignments} ra ON ra.contextid = ctx.id AND ra.userid = ue.userid
+                        JOIN {role} r ON ra.roleid = r.id
+                        WHERE e.courseid = ? 
+                        AND r.shortname IN ('student')
+                        AND ue.status = 0";
+        
         $stats = $DB->get_record_sql($sql, [$course->id]);
+        $student_stats = $DB->get_record_sql($student_sql, [$course->id]);
+        
+        // Combine the statistics
+        $stats->student_count = $student_stats->student_count ?: 0;
         
         $teacher_courses[] = [
             'course' => $course,
@@ -366,7 +380,27 @@ foreach ($all_courses as $course) {
     $total_courses = count($teacher_courses);
     $total_activities = array_sum(array_column(array_column($teacher_courses, 'stats'), 'activity_count'));
     $total_submissions = array_sum(array_column(array_column($teacher_courses, 'stats'), 'submission_count'));
-    $total_students = array_sum(array_column(array_column($teacher_courses, 'stats'), 'student_count'));
+    
+    // Get distinct total students across all teacher courses
+    if (!empty($teacher_courses)) {
+        $course_ids = array_column(array_column($teacher_courses, 'course'), 'id');
+        $course_ids_placeholder = implode(',', array_fill(0, count($course_ids), '?'));
+        
+        $distinct_students_sql = "SELECT COUNT(DISTINCT ue.userid) as total_distinct_students
+                                  FROM {user_enrolments} ue
+                                  JOIN {enrol} e ON ue.enrolid = e.id
+                                  JOIN {context} ctx ON ctx.instanceid = e.courseid AND ctx.contextlevel = 50
+                                  JOIN {role_assignments} ra ON ra.contextid = ctx.id AND ra.userid = ue.userid
+                                  JOIN {role} r ON ra.roleid = r.id
+                                  WHERE e.courseid IN ($course_ids_placeholder)
+                                  AND r.shortname IN ('student')
+                                  AND ue.status = 0";
+        
+        $total_students_result = $DB->get_record_sql($distinct_students_sql, $course_ids);
+        $total_students = $total_students_result->total_distinct_students ?: 0;
+    } else {
+        $total_students = 0;
+    }
     ?>
 
     <!-- Statistics Overview -->

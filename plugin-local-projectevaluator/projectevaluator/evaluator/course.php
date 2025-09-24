@@ -33,15 +33,18 @@ echo '<span style="margin: 0 10px; color: #a0aec0;">|</span>';
 echo '<span style="color: #2d3748; font-weight: 600;">' . format_string($course->fullname) . '</span>';
 echo '</div>';
 
-// Get all assignments in this course with submission statistics
+// Get all assignments in this course with submission and grading statistics
 $sql = "SELECT a.id, a.name, a.intro, a.duedate, a.allowsubmissionsfromdate, cm.id as cmid,
                COUNT(DISTINCT s.userid) as submitted_count,
                COUNT(DISTINCT s.id) as submission_count,
+               COUNT(DISTINCT CASE WHEN g.grade IS NOT NULL THEN s.userid END) as graded_count,
                COUNT(DISTINCT u.id) as enrolled_count,
-               MAX(s.timemodified) as latest_submission
+               MAX(s.timemodified) as latest_submission,
+               AVG(g.grade) as avg_grade
         FROM {assign} a
         JOIN {course_modules} cm ON cm.instance = a.id AND cm.module = (SELECT id FROM {modules} WHERE name = 'assign')
         LEFT JOIN {assign_submission} s ON a.id = s.assignment AND s.status = 'submitted'
+        LEFT JOIN {assign_grades} g ON g.assignment = a.id AND g.userid = s.userid
         LEFT JOIN {user_enrolments} ue ON ue.userid = s.userid
         LEFT JOIN {enrol} e ON e.id = ue.enrolid AND e.courseid = a.course
         LEFT JOIN {user} u ON u.id = ue.userid AND u.deleted = 0
@@ -547,8 +550,8 @@ $total_enrolled = $DB->get_field_sql($enrolled_sql, [$courseid]);
                                     <div class="stat-label">Submitted</div>
                                 </div>
                                 <div class="stat-box">
-                                    <div class="stat-number"><?php echo $activity->submission_count ?: 0; ?></div>
-                                    <div class="stat-label">Total Sub.</div>
+                                    <div class="stat-number"><?php echo $activity->graded_count ?: 0; ?></div>
+                                    <div class="stat-label">Graded</div>
                                 </div>
                                 <div class="stat-box">
                                     <div class="stat-number"><?php echo number_format($submission_rate, 0); ?>%</div>
@@ -613,8 +616,8 @@ $total_enrolled = $DB->get_field_sql($enrolled_sql, [$courseid]);
                                     <div class="stat-label">Submitted</div>
                                 </div>
                                 <div class="stat-box">
-                                    <div class="stat-number"><?php echo $activity->submission_count ?: 0; ?></div>
-                                    <div class="stat-label">Total Sub.</div>
+                                    <div class="stat-number"><?php echo $activity->graded_count ?: 0; ?></div>
+                                    <div class="stat-label">Graded</div>
                                 </div>
                                 <div class="stat-box">
                                     <div class="stat-number"><?php echo number_format($submission_rate, 0); ?>%</div>
