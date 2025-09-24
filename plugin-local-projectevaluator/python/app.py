@@ -120,43 +120,55 @@ def extract_document_text(doc: DocumentData) -> str:
         return f"[Error processing {doc.filename}]"
 
 
-def format_zip_contents_for_llm(zip_file: zipfile.ZipFile) -> str:
+def format_zip_contents_for_llm(zip_file: zipfile.ZipFile, path_prefix: str = "") -> str:
     """
     Reads a zip file and formats its text-based contents into a single string
-    suitable for an LLM prompt.
+    suitable for an LLM prompt. Handles nested zip files.
     """
     formatted_parts = []
     skipped_files = []
     
     for item_info in zip_file.infolist():
+        # Construct the full path for display
+        full_filename = f"{path_prefix}{item_info.filename}"
+
         # Skip directories and common metadata/cache files
         if item_info.is_dir() or '__pycache__' in item_info.filename or '.DS_Store' in item_info.filename:
             continue
 
-
         try:
-            # Read and decode the file content
             with zip_file.open(item_info) as file_in_zip:
                 content_bytes = file_in_zip.read()
+
+                # NEW: Check for and handle nested zip files
+                if item_info.filename.lower().endswith('.zip'):
+                    print(f"Found nested zip: {full_filename}. Processing recursively.")
+                    nested_zip_in_memory = io.BytesIO(content_bytes)
+                    with zipfile.ZipFile(nested_zip_in_memory, 'r') as nested_zip_ref:
+                        # Recursively call the function with a path prefix
+                        nested_content = format_zip_contents_for_llm(nested_zip_ref, path_prefix=f"{full_filename}/")
+                        formatted_parts.append(nested_content)
+                    continue
+
                 # Try decoding as UTF-8, if it fails, it's likely a binary file
                 content_str = content_bytes.decode('utf-8')
                 
-                formatted_parts.append(f"--- FILE: {item_info.filename} ---")
+                formatted_parts.append(f"--- FILE: {full_filename} ---")
                 formatted_parts.append(content_str)
                 formatted_parts.append("--- END FILE ---\n")
 
-
         except UnicodeDecodeError:
-            skipped_files.append(item_info.filename)
-            print(f"Skipping binary or non-UTF-8 file: {item_info.filename}")
+            skipped_files.append(full_filename)
+            print(f"Skipping binary or non-UTF-8 file: {full_filename}")
+        except zipfile.BadZipFile:
+            skipped_files.append(full_filename)
+            print(f"Skipping corrupted or invalid zip file: {full_filename}")
         except Exception as e:
-            skipped_files.append(item_info.filename)
-            print(f"Error reading {item_info.filename} from zip: {e}")
-
+            skipped_files.append(full_filename)
+            print(f"Error reading {full_filename} from zip: {e}")
 
     if skipped_files:
         formatted_parts.append(f"NOTE: The following binary or unreadable files were skipped: {', '.join(skipped_files)}")
-
 
     return "\n".join(formatted_parts)
 
@@ -245,31 +257,33 @@ def build_project_prompt(topics: str, complexity: str, documents: Optional[List[
 
 def build_evaluation_prompt(project_criteria: str, submission_code: str) -> str:
     """Builds a prompt for evaluating a student's project submission."""
-    # This prompt is updated to reflect the detailed scoring matrix.
+    # This prompt is updated to place greater emphasis on the problem statement.
     prompt_template = f"""
-**Role:** You are **Project Insight**, an AI-powered code analysis and evaluation expert.Your goal is to meticulously review and provide a comprehensive assessment of a student-submitted project.
+**Role:** You are **Project Insight**, an AI-powered code analysis and evaluation expert. Your goal is to provide a comprehensive assessment of a student-submitted project against a specific problem statement.
 
-**Task:** Evaluate a student's project submission based on a given set of criteria. Your evaluation must be fair, detailed, and directly address the specified evaluation parameters.
+**Task:** Evaluate a student's project submission based on the provided **Problem Statement & Criteria**. Your evaluation must be fair, detailed, and directly measure the submission's success in meeting the specified requirements.
 
-**Primary Inputs:** All the files in the project are supplied in the format of its name and content.
+**Primary Inputs:**
+1. **Problem Statement & Criteria:** A detailed description of the project requirements, constraints, and evaluation metrics.
+2. **Submitted Code:** All files in the student's project submission.
 
 **Evaluation Steps:**
-1.**Language & Framework Detection:** Identify programming language(s) using file extensions and code content. Detect notable frameworks or technologies (e.g., React, Node.js, Django).
-2.**Structure & Intent:** Analyze the entire project to understand its purpose and architecture. Identify front-end, back-end, and database components if present.
-3. **Per-File Analysis:** For each file, silently reason through these checks (do not expose internal reasoning):
-- **Code Quality:** Style, consistency, and obvious bugs.
-- **Clarity & Readability:** Descriptive variable/function names and formatting.
-- **Modularity:** Logical, reusable functions/components; no unnecessary repetition.
-- **Efficiency:** Appropriate algorithms and data structures.
-- **Functionality & Correctness:** Requirements alignment—does it meet its apparent goal? Edge cases—input handling, error checking, security (e.g., SQL injection).
-- **Documentation:** Inline comments explaining complex logic and presence/quality of `README.md` or setup instructions.
-4.On the basis of evaluation done assign a overall score for each of these categories:
-- Code Quality (Score out of 35)
-- Functionality & Correctness (Score out of 45)
-- Documentation (Score out of 20)
+1. **Understand the Problem Statement:** First, thoroughly analyze the **Problem Statement & Criteria** to understand the core requirements, expected functionality, technical constraints, and deliverables. This context is the primary lens through which you will evaluate the code.
+2. **Language & Framework Detection:** Identify the programming language(s), frameworks, and key libraries used in the submission.
+3. **Architectural Review:** Analyze the overall project structure. Identify its main components (e.g., front-end, back-end, database) and assess how the architecture aligns with the project's goals as defined in the **Problem Statement & Criteria**.
+4. **Functionality & Correctness Analysis:** This is the most critical step. Systematically verify if the submitted code fulfills the functional requirements outlined in the **Problem Statement & Criteria**.
+    - **Requirement Fulfillment:** Does the application perform all the functions described in the problem statement?
+    - **Adherence to Constraints:** Does the solution respect any technical constraints (e.g., specific library versions, no external APIs) mentioned in the criteria?
+    - **Edge Cases & Error Handling:** How does the code handle invalid inputs, potential errors, and edge cases relevant to the project's domain?
+5. **Code Quality Analysis:** Assess the internal quality of the code, including style, consistency, clarity, modularity, and efficiency.
+6. **Documentation Review:** Evaluate the quality and completeness of documentation, such as the `README.md` file and inline comments.
+7. **Scoring:** Based on your comprehensive analysis, assign a score for each category. The scoring must reflect how well the project met the problem statement's requirements.
+    - Code Quality (Score out of 35)
+    - Functionality & Correctness (Score out of 45) - *This score should primarily reflect how completely and correctly the project implements the features defined in the Problem Statement & Criteria.*
+    - Documentation (Score out of 20)
 
 **FINAL OUTPUT (return only this JSON object):**
-```json
+```
 {{
   "overall_score": <number>,
   "scores": {{
@@ -278,14 +292,14 @@ def build_evaluation_prompt(project_criteria: str, submission_code: str) -> str:
     "documentation": <number>
   }},
   "report": {{
-    "strengths": ["<A bullet list of the project's main strengths with specific examples and file references where applicable>"],
-    "areas_of_improvement": [
-      "<A bullet list of weaknesses or issues. For each item, include the file name, an illustrative code snippet or line reference when helpful, explain why it is a problem, and give a concrete, actionable fix or suggested change>],
-    "summary": "<A concise high-level paragraph describing project quality, readiness, risks, and recommended next steps.>"
+    "strengths": ["<A bullet list of the project's main strengths, with specific examples and file references that tie back to the problem statement's requirements>"],
+    "areas_of_improvement": ["<A bullet list of weaknesses. For each item, include the file name, explain why it fails to meet a requirement or best practice, and provide a concrete, actionable fix.>"],
+    "summary": "<A concise high-level paragraph describing project quality, its adherence to the problem statement, and recommended next steps.>"
   }}
 }}
+```
 
-**INPUT 1: PROJECT CRITERIA**
+**INPUT 1: PROBLEM STATEMENT & CRITERIA**
 ============================
 {project_criteria}
 ============================

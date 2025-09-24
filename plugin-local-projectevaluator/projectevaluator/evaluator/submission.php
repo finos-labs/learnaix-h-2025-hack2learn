@@ -1084,19 +1084,19 @@ $grade = $DB->get_record('assign_grades', array('assignment' => $assignmentid, '
                         <input type="number" class="grade-field" id="grade-input" placeholder="Grade (0-100)" min="0" max="100" step="0.1">
                         <button class="grade-btn" onclick="assignGrade()">Save</button>
                     </div>
-                    <div style="margin-top: 15px;">
-                        <button class="publish-btn" id="publish-btn" onclick="showPublishModal()" disabled>
-                            📤 Publish to Gradebook
-                        </button>
-                    </div>
                 </div>
-
+                
                 <!-- Feedback Section -->
                 <div class="feedback-section">
                     <h3 style="margin-bottom: 15px; color: #2d3748;">💬 Feedback</h3>
                     <textarea class="feedback-textarea" id="feedback-text" placeholder="Provide detailed feedback for the student..."></textarea>
                 </div>
-
+                
+                <div style="margin-top: 15px;">
+                    <button class="publish-btn" id="publish-btn" onclick="showPublishModal()" disabled>
+                        📤 Publish to Gradebook
+                    </button>
+                </div>
                 <!-- Quick Actions -->
                 <div class="quick-actions">
                     <button class="quick-btn" onclick="window.open('<?php echo $CFG->wwwroot; ?>/mod/assign/view.php?id=<?php echo $cmid; ?>&rownum=0&action=grader&userid=<?php echo $userid; ?>', '_blank')">
