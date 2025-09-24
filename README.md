@@ -1,76 +1,53 @@
-# NatWest Hack4aCause Hackathon
+# 🤖 AI-Project 
 
-![badge-labs](https://user-images.githubusercontent.com/327285/230928932-7c75f8ed-e57b-41db-9fb7-a292a13a1e58.svg)
+## 📄 Summary of Your Solution (under 150 words)
 
-This repository was forked from [finos-labs/learnaix-h-2025](https://github.com/finos-labs/learnaix-h-2025).
+What problem does your solution solve?
 
-Please refer to the [HACK4ACAUSE-TEMPLATE_README.md](./HACK4ACAUSE-TEMPLATE_README.md) for complete submission instructions and project documentation requirements.
+Our AI-Powered Project Evaluator eliminates manual grading bottlenecks, inconsistent feedback, and scalability limitations in educational assessment. Traditional evaluation suffers from human bias, delayed responses, and inability to handle diverse submission formats effectively.
+
+How does it work?
+
+The system implements a 6-stage automated pipeline: (1) AI generates customized project statements using Snowflake Cortex with Claude-3.5-Sonnet, (2) processes multiple submission formats (ZIP files, GitHub repositories, documents), (3) performs comprehensive code analysis including repository scraping and commit history evaluation, (4) executes structured assessment across standardized criteria (Code Quality 35%, Functionality 45%, Documentation 20%), (5) generates detailed feedback with strengths/improvements, (6) integrates seamlessly with Moodle gradebooks.
+
+What technologies did you use?
+
+Backend: Python FastAPI, Snowflake Cortex, GitHub API integration, multi-format document processing. Frontend: PHP with Moodle LMS, responsive CSS Grid, progressive web features, real-time AJAX. Architecture: RESTful APIs, modular microservices, comprehensive logging, mobile-first responsive design.
+
+Impact: 60-80% grading time reduction, instant feedback delivery, scalable assessment for thousands of concurrent submissions.
+
+## 👥 Team Information
+
+| Field            | Details                                                                                |
+| ---------------- | ---------------------------------------------------------------                        |
+| Team Name        | Hack2Learn                                                                             |
+| Title            | 🤖 AI-Project Hub                                                                      |
+| Theme            | AI Powered Project Evalauator                                                          |
+| Contact Email    | anshul001banwala@gmail.com                                                             |
+| Participants     | Anshul, Harish A, Esha Thakur, Ravva Amrutha, Suresh Dharman                           |
+| GitHub Usernames | @anshulbanwala, @Harish-Arun, @Eshathakur88, @AmruthaRavva26, @sureshachiever-max      |
 
 ---
 
-&nbsp;
+## 🎥 Submission Video
 
-Join us in a transformative AI hackathon focused on driving social impact in education and
-employability. Let’s work together to add the next game changer feature on to Snowflake
-LearnAIx platform, the AI-assisted, open-source learning system that you all will be helping
-build via this hackathon.
+Provide a video walkthrough/demo of your project. You can upload it to YouTube, Google Drive, Loom, etc.
 
-## Purpose:
+- 📹 **Video Link**: [[🤖 AI-Project Hub - Video Demonstration](https://www.youtube.com/watch?v=ktXizTCLn4E)]
 
-With LearnAIx, our goal is to develop a scalable and accessible platform that can be
-leveraged by non-profits and academies alike to enhance learning experiences and open
-doors of opportunities to all learners.
+---
 
-Through your involvement in this hackathon, you will get the opportunity to socialise and
-network with like-minded enthusiasts who believe in open-source enablers for community
-benefit. You will use AI to improve learning solutions in the education sector.
+## 🌐 Hosted App / Solution URL
 
-## Objective:
+If your solution is deployed, share the live link here.
 
-To create AI enabled Moodle plugins on existing LearnAIx alpha solution on Snowflake public
-platform. Shortlisted plugins will feature in the LearnAIx beta version that will be available to consume for free.
+- 🌍 **Deployed URL**: [Local Setup]
 
-### Integrations & Tech stack
-
-Plugins: Custom Moodle plugins using PHP, JavaScript, and REST APIs
-AI Integration: OpenAI APIs, LangChain, or Python-based microservices
-Hosting: Snowflake
-
-## How to get started with Plugin Development
-
-- Open the provided repo
-- Navigate to `assets` folder
-- ### Step 1: Choose your runtime
-
-#### You can choose to run it in one of two ways:
-
-##### Option 1: Run Plugin on Snowflake
-
-- No need to install Moodle
-- you can run the plugin directly inside your Snowflake environment.
-- _Note:_ If you only want to use Snowflake, you can _skip the local setup steps_ below.
-
-##### Option 2: Run Plugin Locally with Moodle
-
-- Install Moodle on your local machine.
-- Follow the setup guide for your OS:
-  - [Windows Guide](./example/moodle-local-setup/setup-Windows.md)
-  - [macOS/iOS Guide](./example/moodle-local-setup/setup-MacOS.md)
-- Complete the setup steps as per the guide.
-
-- ### Step 2: Create Your Plugin
-  Once you’ve decided where to run the plugin (Snowflake or Moodle), the next step is to _create your plugin_.
-
-We have provided _different plugin templates_ inside the repository:
-
-- _With PHP support_ → See the [with php](./example/plugin-development-templates/with-php/)
-- _Without PHP support_ → See the [without php](./example/plugin-development-templates/without-php/)
-
-Explore these folders and pick the template that best fits your needs.
+---
 
 ## License
 
-&copy; Copyright 2025 FINOS
+Copyright 2025 FINOS
 
 Distributed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 
